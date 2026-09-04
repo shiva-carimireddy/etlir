@@ -1,0 +1,58 @@
+---
+name: Adoption report
+description: Request opt-in recognition of a public ETLIR use case.
+title: "[Adoption]: "
+labels: [adoption]
+body:
+  - type: input
+    id: adopter
+    attributes:
+      label: Developer, project, or organization
+    validations:
+      required: true
+  - type: input
+    id: public_link
+    attributes:
+      label: Public project or organization link
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ETLIR version or commit used
+    validations:
+      required: true
+  - type: input
+    id: adapters
+    attributes:
+      label: Source and target adapters
+    validations:
+      required: true
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Non-confidential use case
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Public evidence
+      description: >-
+        Link a fork, adapter, integration, issue, technical post, or other
+        inspectable artifact.
+    validations:
+      required: true
+  - type: checkboxes
+    id: permission
+    attributes:
+      label: Permission
+      options:
+        - label: >-
+            I am authorized to submit this information and permit it to be
+            listed publicly.
+          required: true
+        - label: >-
+            This submission contains no confidential or proprietary
+            information.
+          required: true

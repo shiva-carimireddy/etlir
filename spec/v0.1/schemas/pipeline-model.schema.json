@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://etlir.com/schemas/v0.1/pipeline-model.schema.json",
+  "title": "ETLIR Pipeline Semantic Model v0.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["model_version", "provenance", "pipeline"],
+  "properties": {
+    "model_version": {
+      "const": "0.1.0"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "pipeline": {
+      "$ref": "#/$defs/pipeline"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_adapter", "source_artifact"],
+      "properties": {
+        "source_adapter": {
+          "$ref": "#/$defs/adapter"
+        },
+        "source_artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name", "sha256", "format", "format_version"],
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "format": {
+              "type": "string",
+              "minLength": 1
+            },
+            "format_version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "parameters", "datasets", "operations", "edges"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parameter"
+          }
+        },
+        "datasets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dataset"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "required"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "enum": ["string", "integer", "number", "boolean", "date", "timestamp", "decimal"]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": ["string", "integer", "number", "boolean", "null"]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "kind", "format", "location", "fields"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "enum": ["source", "target", "intermediate"]
+        },
+        "kind": {
+          "enum": ["file", "table", "stream", "other"]
+        },
+        "format": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["uri"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "nullable"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": ["string", "integer", "number", "boolean", "date", "timestamp", "decimal", "unknown"]
+        },
+        "nullable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "pointer"],
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "pointer": {
+          "type": "string",
+          "pattern": "^(|(/([^~/]|~0|~1)*))+$"
+        }
+      }
+    },
+    "base_operation": {
+      "type": "object",
+      "required": ["id", "kind", "source_refs"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          }
+        }
+      }
+    },
+    "read_operation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_operation"
+        },
+        {
+          "type": "object",
+          "required": ["dataset_id"],
+          "properties": {
+            "kind": {
+              "const": "read"
+            },
+            "dataset_id": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "filter_operation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_operation"
+        },
+        {
+          "type": "object",
+          "required": ["predicate"],
+          "properties": {
+            "kind": {
+              "const": "filter"
+            },
+            "predicate": {
+              "$ref": "#/$defs/expression"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "derive_operation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_operation"
+        },
+        {
+          "type": "object",
+          "required": ["assignments"],
+          "properties": {
+            "kind": {
+              "const": "derive"
+            },
+            "assignments": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["field", "expression"],
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "expression": {
+                    "$ref": "#/$defs/expression"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "write_operation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_operation"
+        },
+        {
+          "type": "object",
+          "required": ["dataset_id"],
+          "properties": {
+            "kind": {
+              "const": "write"
+            },
+            "dataset_id": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "external_operation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_operation"
+        },
+        {
+          "type": "object",
+          "required": ["operation_type", "configuration"],
+          "properties": {
+            "kind": {
+              "const": "external_operation"
+            },
+            "operation_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "configuration": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/read_operation"
+        },
+        {
+          "$ref": "#/$defs/filter_operation"
+        },
+        {
+          "$ref": "#/$defs/derive_operation"
+        },
+        {
+          "$ref": "#/$defs/write_operation"
+        },
+        {
+          "$ref": "#/$defs/external_operation"
+        }
+      ]
+    },
+    "expression": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/field_expression"
+        },
+        {
+          "$ref": "#/$defs/literal_expression"
+        },
+        {
+          "$ref": "#/$defs/parameter_expression"
+        },
+        {
+          "$ref": "#/$defs/binary_expression"
+        }
+      ]
+    },
+    "field_expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": {
+          "const": "field"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "literal_expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "data_type", "value"],
+      "properties": {
+        "kind": {
+          "const": "literal"
+        },
+        "data_type": {
+          "enum": ["string", "integer", "number", "boolean", "null"]
+        },
+        "value": {
+          "type": ["string", "integer", "number", "boolean", "null"]
+        }
+      }
+    },
+    "parameter_expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": {
+          "const": "parameter"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "binary_expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operator", "left", "right"],
+      "properties": {
+        "kind": {
+          "const": "binary"
+        },
+        "operator": {
+          "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "add", "subtract", "multiply", "divide", "and", "or"]
+        },
+        "left": {
+          "$ref": "#/$defs/expression"
+        },
+        "right": {
+          "$ref": "#/$defs/expression"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/identifier"
+        },
+        "to": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    }
+  }
+}
+

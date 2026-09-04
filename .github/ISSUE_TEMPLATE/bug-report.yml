@@ -1,0 +1,55 @@
+---
+name: Bug report
+description: Report reproducible incorrect behavior in ETLIR.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Do not include confidential pipeline artifacts, credentials, or
+        employer/client details.
+        Reduce the problem to a synthetic example.
+  - type: input
+    id: version
+    attributes:
+      label: ETLIR version or commit
+      placeholder: 0.1.0a1 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: adapters
+    attributes:
+      label: Source and target adapters
+      placeholder: exampleflow 1.0.0 → duckdb 1.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Synthetic reproduction
+      description: >-
+        Include the smallest non-confidential artifact and exact command.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and diagnostics
+    validations:
+      required: true
+  - type: checkboxes
+    id: clean_room
+    attributes:
+      label: Clean-room confirmation
+      options:
+        - label: >-
+            This report and its attachments contain no confidential or
+            proprietary material.
+          required: true

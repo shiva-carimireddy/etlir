@@ -1,0 +1,61 @@
+{
+  "format": "exampleflow",
+  "version": "1.0",
+  "pipeline": {
+    "id": "retail.loyalty_enrichment",
+    "name": "Enrich orders through an external service",
+    "description": "Demonstrates a modeled operation that the DuckDB target cannot preserve.",
+    "datasets": [
+      {
+        "id": "orders_raw",
+        "name": "Raw orders",
+        "role": "source",
+        "kind": "file",
+        "format": "csv",
+        "path": "data/orders.csv",
+        "fields": [
+          {"name": "order_id", "type": "integer", "nullable": false},
+          {"name": "customer_id", "type": "string", "nullable": false}
+        ]
+      },
+      {
+        "id": "orders_enriched",
+        "name": "Enriched orders",
+        "role": "target",
+        "kind": "file",
+        "format": "parquet",
+        "path": "build/orders-enriched.parquet",
+        "fields": [
+          {"name": "order_id", "type": "integer", "nullable": false},
+          {"name": "customer_id", "type": "string", "nullable": false}
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "id": "read_orders",
+        "name": "Read raw orders",
+        "type": "read",
+        "dataset": "orders_raw",
+        "inputs": []
+      },
+      {
+        "id": "fetch_loyalty_tier",
+        "name": "Fetch loyalty tier",
+        "type": "external_http",
+        "inputs": ["read_orders"],
+        "method": "POST",
+        "url": "https://loyalty.example.test/enrich",
+        "timeout_seconds": 5
+      },
+      {
+        "id": "write_orders",
+        "name": "Write enriched orders",
+        "type": "write",
+        "dataset": "orders_enriched",
+        "inputs": ["fetch_loyalty_tier"]
+      }
+    ]
+  }
+}
+

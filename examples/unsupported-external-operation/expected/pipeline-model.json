@@ -1,0 +1,121 @@
+{
+  "model_version": "0.1.0",
+  "pipeline": {
+    "datasets": [
+      {
+        "fields": [
+          {
+            "name": "order_id",
+            "nullable": false,
+            "type": "integer"
+          },
+          {
+            "name": "customer_id",
+            "nullable": false,
+            "type": "string"
+          }
+        ],
+        "format": "csv",
+        "id": "orders_raw",
+        "kind": "file",
+        "location": {
+          "uri": "data/orders.csv"
+        },
+        "name": "Raw orders",
+        "role": "source"
+      },
+      {
+        "fields": [
+          {
+            "name": "order_id",
+            "nullable": false,
+            "type": "integer"
+          },
+          {
+            "name": "customer_id",
+            "nullable": false,
+            "type": "string"
+          }
+        ],
+        "format": "parquet",
+        "id": "orders_enriched",
+        "kind": "file",
+        "location": {
+          "uri": "build/orders-enriched.parquet"
+        },
+        "name": "Enriched orders",
+        "role": "target"
+      }
+    ],
+    "description": "Demonstrates a modeled operation that the DuckDB target cannot preserve.",
+    "edges": [
+      {
+        "from": "read_orders",
+        "to": "fetch_loyalty_tier"
+      },
+      {
+        "from": "fetch_loyalty_tier",
+        "to": "write_orders"
+      }
+    ],
+    "id": "retail.loyalty_enrichment",
+    "name": "Enrich orders through an external service",
+    "operations": [
+      {
+        "dataset_id": "orders_raw",
+        "id": "read_orders",
+        "kind": "read",
+        "name": "Read raw orders",
+        "source_refs": [
+          {
+            "artifact_id": "source",
+            "pointer": "/pipeline/steps/0"
+          }
+        ]
+      },
+      {
+        "configuration": {
+          "method": "POST",
+          "timeout_seconds": 5,
+          "url": "https://loyalty.example.test/enrich"
+        },
+        "id": "fetch_loyalty_tier",
+        "kind": "external_operation",
+        "name": "Fetch loyalty tier",
+        "operation_type": "http_request",
+        "source_refs": [
+          {
+            "artifact_id": "source",
+            "pointer": "/pipeline/steps/1"
+          }
+        ]
+      },
+      {
+        "dataset_id": "orders_enriched",
+        "id": "write_orders",
+        "kind": "write",
+        "name": "Write enriched orders",
+        "source_refs": [
+          {
+            "artifact_id": "source",
+            "pointer": "/pipeline/steps/2"
+          }
+        ]
+      }
+    ],
+    "parameters": []
+  },
+  "provenance": {
+    "source_adapter": {
+      "name": "exampleflow",
+      "version": "1.0.0"
+    },
+    "source_artifact": {
+      "format": "exampleflow",
+      "format_version": "1.0",
+      "id": "source",
+      "name": "source.exampleflow.json",
+      "sha256": "c053abe652a83fe00ead07c3fe7531395b9fc6d5704d5c19d57f83336f6431d7"
+    }
+  }
+}

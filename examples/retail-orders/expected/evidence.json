@@ -1,0 +1,136 @@
+{
+  "artifacts": [
+    {
+      "media_type": "application/json",
+      "path": "source.exampleflow.json",
+      "role": "source",
+      "sha256": "c2ead0e13862d8bb399c8b6de1d763404af4eab3cd89be63a0fb1b8b2c4b18fb"
+    },
+    {
+      "media_type": "application/json",
+      "path": "pipeline-model.json",
+      "role": "model",
+      "sha256": "05830fef6a42cbcac7c47f53f14487f8a16004263e01fe3232dbb4722938910e"
+    },
+    {
+      "media_type": "text/sql",
+      "path": "target/pipeline.sql",
+      "role": "target",
+      "sha256": "f58997872d15f8f1343a26af8db72893c7b59022a4dfbd7491254876118fd5a1"
+    }
+  ],
+  "created_at": "2026-09-04T12:00:00Z",
+  "diagnostics": [],
+  "etlir_version": "0.1.0a1",
+  "evidence_version": "0.1.0",
+  "model_validation": {
+    "model_version": "0.1.0",
+    "valid": true
+  },
+  "records": [
+    {
+      "basis": "CSV read and declared field types translated to DuckDB read_csv.",
+      "diagnostic_ids": [],
+      "disposition": "preserved",
+      "model_ref": {
+        "operation_id": "read_orders",
+        "pointer": "/pipeline/operations/0"
+      },
+      "source_refs": [
+        {
+          "artifact_id": "source",
+          "pointer": "/pipeline/steps/0"
+        }
+      ],
+      "target_refs": [
+        {
+          "artifact": "target/pipeline.sql",
+          "locator": "cte:read_orders"
+        }
+      ]
+    },
+    {
+      "basis": "Filter expression translated to a DuckDB WHERE predicate.",
+      "diagnostic_ids": [],
+      "disposition": "preserved",
+      "model_ref": {
+        "operation_id": "keep_completed",
+        "pointer": "/pipeline/operations/1"
+      },
+      "source_refs": [
+        {
+          "artifact_id": "source",
+          "pointer": "/pipeline/steps/1"
+        }
+      ],
+      "target_refs": [
+        {
+          "artifact": "target/pipeline.sql",
+          "locator": "cte:keep_completed"
+        }
+      ]
+    },
+    {
+      "basis": "Derived fields translated to DuckDB SELECT expressions.",
+      "diagnostic_ids": [],
+      "disposition": "preserved",
+      "model_ref": {
+        "operation_id": "calculate_net",
+        "pointer": "/pipeline/operations/2"
+      },
+      "source_refs": [
+        {
+          "artifact_id": "source",
+          "pointer": "/pipeline/steps/2"
+        }
+      ],
+      "target_refs": [
+        {
+          "artifact": "target/pipeline.sql",
+          "locator": "cte:calculate_net"
+        }
+      ]
+    },
+    {
+      "basis": "Parquet write translated to a DuckDB COPY statement.",
+      "diagnostic_ids": [],
+      "disposition": "preserved",
+      "model_ref": {
+        "operation_id": "write_orders",
+        "pointer": "/pipeline/operations/3"
+      },
+      "source_refs": [
+        {
+          "artifact_id": "source",
+          "pointer": "/pipeline/steps/3"
+        }
+      ],
+      "target_refs": [
+        {
+          "artifact": "target/pipeline.sql",
+          "locator": "statement:copy:write_orders"
+        }
+      ]
+    }
+  ],
+  "run_id": "run_1d09dc0bfd150a80",
+  "source": {
+    "adapter": "exampleflow",
+    "adapter_version": "1.0.0"
+  },
+  "status": "complete",
+  "summary": {
+    "ambiguous": 0,
+    "approximated": 0,
+    "blocked": 0,
+    "manual": 0,
+    "model_operations": 4,
+    "preserved": 4,
+    "source_elements": 4,
+    "unsupported": 0
+  },
+  "target": {
+    "adapter": "duckdb",
+    "adapter_version": "1.0.0"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://etlir.com/schemas/v0.1/diagnostic.schema.json",
+  "title": "ETLIR Diagnostic v0.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "code", "severity", "category", "stage", "message", "location"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^diag_[a-f0-9]{12}$"
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*(\\.[A-Z][A-Z0-9_]*)+$"
+    },
+    "severity": {
+      "enum": ["info", "warning", "error"]
+    },
+    "category": {
+      "enum": ["invalid", "unsupported", "ambiguous", "lossy", "manual_action", "internal"]
+    },
+    "stage": {
+      "enum": ["source_adaptation", "model_validation", "target_translation", "fidelity_assessment", "evidence_generation"]
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact"],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pointer": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "details": {
+      "type": "object"
+    },
+    "remediation": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
+

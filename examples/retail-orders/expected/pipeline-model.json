@@ -1,0 +1,195 @@
+{
+  "model_version": "0.1.0",
+  "pipeline": {
+    "datasets": [
+      {
+        "fields": [
+          {
+            "name": "order_id",
+            "nullable": false,
+            "type": "integer"
+          },
+          {
+            "name": "customer_id",
+            "nullable": false,
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "nullable": false,
+            "type": "string"
+          },
+          {
+            "name": "gross_amount",
+            "nullable": false,
+            "type": "number"
+          },
+          {
+            "name": "discount_amount",
+            "nullable": false,
+            "type": "number"
+          }
+        ],
+        "format": "csv",
+        "id": "orders_raw",
+        "kind": "file",
+        "location": {
+          "uri": "data/orders.csv"
+        },
+        "name": "Raw orders",
+        "role": "source"
+      },
+      {
+        "fields": [
+          {
+            "name": "order_id",
+            "nullable": false,
+            "type": "integer"
+          },
+          {
+            "name": "customer_id",
+            "nullable": false,
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "nullable": false,
+            "type": "string"
+          },
+          {
+            "name": "gross_amount",
+            "nullable": false,
+            "type": "number"
+          },
+          {
+            "name": "discount_amount",
+            "nullable": false,
+            "type": "number"
+          },
+          {
+            "name": "net_amount",
+            "nullable": false,
+            "type": "number"
+          }
+        ],
+        "format": "parquet",
+        "id": "orders_curated",
+        "kind": "file",
+        "location": {
+          "uri": "build/orders.parquet"
+        },
+        "name": "Curated completed orders",
+        "role": "target"
+      }
+    ],
+    "description": "Keep completed orders and calculate a net amount for each row.",
+    "edges": [
+      {
+        "from": "read_orders",
+        "to": "keep_completed"
+      },
+      {
+        "from": "keep_completed",
+        "to": "calculate_net"
+      },
+      {
+        "from": "calculate_net",
+        "to": "write_orders"
+      }
+    ],
+    "id": "retail.orders_curated",
+    "name": "Curate completed retail orders",
+    "operations": [
+      {
+        "dataset_id": "orders_raw",
+        "id": "read_orders",
+        "kind": "read",
+        "name": "Read raw orders",
+        "source_refs": [
+          {
+            "artifact_id": "source",
+            "pointer": "/pipeline/steps/0"
+          }
+        ]
+      },
+      {
+        "id": "keep_completed",
+        "kind": "filter",
+        "name": "Keep completed orders",
+        "predicate": {
+          "kind": "binary",
+          "left": {
+            "kind": "field",
+            "name": "status"
+          },
+          "operator": "eq",
+          "right": {
+            "data_type": "string",
+            "kind": "literal",
+            "value": "COMPLETE"
+          }
+        },
+        "source_refs": [
+          {
+            "artifact_id": "source",
+            "pointer": "/pipeline/steps/1"
+          }
+        ]
+      },
+      {
+        "assignments": [
+          {
+            "expression": {
+              "kind": "binary",
+              "left": {
+                "kind": "field",
+                "name": "gross_amount"
+              },
+              "operator": "subtract",
+              "right": {
+                "kind": "field",
+                "name": "discount_amount"
+              }
+            },
+            "field": "net_amount"
+          }
+        ],
+        "id": "calculate_net",
+        "kind": "derive",
+        "name": "Calculate net amount",
+        "source_refs": [
+          {
+            "artifact_id": "source",
+            "pointer": "/pipeline/steps/2"
+          }
+        ]
+      },
+      {
+        "dataset_id": "orders_curated",
+        "id": "write_orders",
+        "kind": "write",
+        "name": "Write curated orders",
+        "source_refs": [
+          {
+            "artifact_id": "source",
+            "pointer": "/pipeline/steps/3"
+          }
+        ]
+      }
+    ],
+    "parameters": []
+  },
+  "provenance": {
+    "source_adapter": {
+      "name": "exampleflow",
+      "version": "1.0.0"
+    },
+    "source_artifact": {
+      "format": "exampleflow",
+      "format_version": "1.0",
+      "id": "source",
+      "name": "source.exampleflow.json",
+      "sha256": "c2ead0e13862d8bb399c8b6de1d763404af4eab3cd89be63a0fb1b8b2c4b18fb"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use ETLIR in published work, please cite the software and the exact version used."
+type: software
+title: "ETLIR: Platform-neutral pipeline semantics, translation, and migration evidence"
+version: 0.1.0-alpha.1
+authors:
+  - family-names: Carimireddy
+    given-names: Shiva Kumar Reddy
+license: Apache-2.0
+repository-code: "https://github.com/shiva-carimireddy/etlir"
+url: "https://etlir.com"
+keywords:
+  - data pipelines
+  - semantic model
+  - platform migration
+  - migration evidence
+

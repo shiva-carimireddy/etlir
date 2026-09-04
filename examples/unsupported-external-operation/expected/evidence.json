@@ -1,0 +1,115 @@
+{
+  "artifacts": [
+    {
+      "media_type": "application/json",
+      "path": "source.exampleflow.json",
+      "role": "source",
+      "sha256": "c053abe652a83fe00ead07c3fe7531395b9fc6d5704d5c19d57f83336f6431d7"
+    },
+    {
+      "media_type": "application/json",
+      "path": "pipeline-model.json",
+      "role": "model",
+      "sha256": "b7ee5c4b44426f09c80d0a2749e12714c72b3fd8f6e20502dcf1f7a3d178d9b5"
+    }
+  ],
+  "created_at": "2026-09-04T12:00:00Z",
+  "diagnostics": [
+    {
+      "category": "unsupported",
+      "code": "TARGET.UNSUPPORTED_OPERATION",
+      "details": {
+        "operation_kind": "external_operation",
+        "target_adapter": "duckdb"
+      },
+      "id": "diag_dfb1972b773c",
+      "location": {
+        "artifact": "pipeline-model.json",
+        "operation_id": "fetch_loyalty_tier",
+        "pointer": "/pipeline/operations/1"
+      },
+      "message": "DuckDB SQL cannot preserve external operation 'fetch_loyalty_tier' (http_request).",
+      "remediation": "Implement the operation outside SQL or choose a target adapter with this capability.",
+      "severity": "error",
+      "stage": "target_translation"
+    }
+  ],
+  "etlir_version": "0.1.0a1",
+  "evidence_version": "0.1.0",
+  "model_validation": {
+    "model_version": "0.1.0",
+    "valid": true
+  },
+  "records": [
+    {
+      "basis": "No target artifact was emitted because the pipeline contains a blocking condition.",
+      "diagnostic_ids": [],
+      "disposition": "blocked",
+      "model_ref": {
+        "operation_id": "read_orders",
+        "pointer": "/pipeline/operations/0"
+      },
+      "source_refs": [
+        {
+          "artifact_id": "source",
+          "pointer": "/pipeline/steps/0"
+        }
+      ],
+      "target_refs": []
+    },
+    {
+      "basis": "The target adapter reported an unsupported capability for this operation.",
+      "diagnostic_ids": [
+        "diag_dfb1972b773c"
+      ],
+      "disposition": "unsupported",
+      "model_ref": {
+        "operation_id": "fetch_loyalty_tier",
+        "pointer": "/pipeline/operations/1"
+      },
+      "source_refs": [
+        {
+          "artifact_id": "source",
+          "pointer": "/pipeline/steps/1"
+        }
+      ],
+      "target_refs": []
+    },
+    {
+      "basis": "No target artifact was emitted because the pipeline contains a blocking condition.",
+      "diagnostic_ids": [],
+      "disposition": "blocked",
+      "model_ref": {
+        "operation_id": "write_orders",
+        "pointer": "/pipeline/operations/2"
+      },
+      "source_refs": [
+        {
+          "artifact_id": "source",
+          "pointer": "/pipeline/steps/2"
+        }
+      ],
+      "target_refs": []
+    }
+  ],
+  "run_id": "run_0833e66943b9d9aa",
+  "source": {
+    "adapter": "exampleflow",
+    "adapter_version": "1.0.0"
+  },
+  "status": "blocked",
+  "summary": {
+    "ambiguous": 0,
+    "approximated": 0,
+    "blocked": 2,
+    "manual": 0,
+    "model_operations": 3,
+    "preserved": 0,
+    "source_elements": 3,
+    "unsupported": 1
+  },
+  "target": {
+    "adapter": "duckdb",
+    "adapter_version": "1.0.0"
+  }
+}

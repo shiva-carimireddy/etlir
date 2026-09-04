@@ -1,0 +1,87 @@
+{
+  "format": "exampleflow",
+  "version": "1.0",
+  "pipeline": {
+    "id": "retail.orders_curated",
+    "name": "Curate completed retail orders",
+    "description": "Keep completed orders and calculate a net amount for each row.",
+    "datasets": [
+      {
+        "id": "orders_raw",
+        "name": "Raw orders",
+        "role": "source",
+        "kind": "file",
+        "format": "csv",
+        "path": "data/orders.csv",
+        "fields": [
+          {"name": "order_id", "type": "integer", "nullable": false},
+          {"name": "customer_id", "type": "string", "nullable": false},
+          {"name": "status", "type": "string", "nullable": false},
+          {"name": "gross_amount", "type": "number", "nullable": false},
+          {"name": "discount_amount", "type": "number", "nullable": false}
+        ]
+      },
+      {
+        "id": "orders_curated",
+        "name": "Curated completed orders",
+        "role": "target",
+        "kind": "file",
+        "format": "parquet",
+        "path": "build/orders.parquet",
+        "fields": [
+          {"name": "order_id", "type": "integer", "nullable": false},
+          {"name": "customer_id", "type": "string", "nullable": false},
+          {"name": "status", "type": "string", "nullable": false},
+          {"name": "gross_amount", "type": "number", "nullable": false},
+          {"name": "discount_amount", "type": "number", "nullable": false},
+          {"name": "net_amount", "type": "number", "nullable": false}
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "id": "read_orders",
+        "name": "Read raw orders",
+        "type": "read",
+        "dataset": "orders_raw",
+        "inputs": []
+      },
+      {
+        "id": "keep_completed",
+        "name": "Keep completed orders",
+        "type": "filter",
+        "inputs": ["read_orders"],
+        "condition": {
+          "kind": "binary",
+          "operator": "eq",
+          "left": {"kind": "field", "name": "status"},
+          "right": {"kind": "literal", "data_type": "string", "value": "COMPLETE"}
+        }
+      },
+      {
+        "id": "calculate_net",
+        "name": "Calculate net amount",
+        "type": "derive",
+        "inputs": ["keep_completed"],
+        "assignments": [
+          {
+            "field": "net_amount",
+            "expression": {
+              "kind": "binary",
+              "operator": "subtract",
+              "left": {"kind": "field", "name": "gross_amount"},
+              "right": {"kind": "field", "name": "discount_amount"}
+            }
+          }
+        ]
+      },
+      {
+        "id": "write_orders",
+        "name": "Write curated orders",
+        "type": "write",
+        "dataset": "orders_curated",
+        "inputs": ["calculate_net"]
+      }
+    ]
+  }
+}

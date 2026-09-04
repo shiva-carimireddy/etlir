@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "etlir"
+version = "0.1.0a1"
+description = "Platform-neutral pipeline semantics, translation, and migration evidence."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "Shiva Kumar Reddy Carimireddy" },
+]
+keywords = [
+  "data-pipelines",
+  "migration",
+  "semantic-model",
+  "etl",
+  "data-engineering",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Code Generators",
+]
+dependencies = [
+  "duckdb>=1.1,<2",
+  "jsonschema>=4.23,<5",
+  "typer>=0.12,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.13,<2",
+  "pytest>=8,<10",
+  "ruff>=0.8,<1",
+  "types-jsonschema>=4.23",
+]
+
+[project.scripts]
+etlir = "etlir.cli:app"
+
+[project.urls]
+Homepage = "https://etlir.com"
+Repository = "https://github.com/shiva-carimireddy/etlir"
+Documentation = "https://github.com/shiva-carimireddy/etlir/tree/main/docs"
+Issues = "https://github.com/shiva-carimireddy/etlir/issues"
+
+[project.entry-points."etlir.source_adapters"]
+exampleflow = "etlir.adapters.sources.exampleflow:ExampleFlowSourceAdapter"
+
+[project.entry-points."etlir.target_adapters"]
+duckdb = "etlir.adapters.targets.duckdb:DuckDBTargetAdapter"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/etlir"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"spec" = "etlir/spec"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/spec",
+  "/tests",
+  "/examples",
+  "/docs",
+  "/README.md",
+  "/LICENSE",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]

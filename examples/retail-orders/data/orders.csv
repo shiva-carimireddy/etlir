@@ -1,0 +1,6 @@
+order_id,customer_id,status,gross_amount,discount_amount
+1001,C001,COMPLETE,120.00,10.00
+1002,C002,PENDING,75.50,0.00
+1003,C003,COMPLETE,49.99,4.99
+1004,C004,CANCELLED,210.00,20.00
+

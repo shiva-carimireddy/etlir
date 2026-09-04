@@ -1,0 +1,51 @@
+---
+name: Adapter proposal
+description: Propose a new independently maintained source or target adapter.
+title: "[Adapter]: "
+labels: [adapter]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Adapter kind
+      options:
+        - Source Adapter
+        - Target Adapter
+    validations:
+      required: true
+  - type: input
+    id: format
+    attributes:
+      label: Public platform or format
+    validations:
+      required: true
+  - type: textarea
+    id: public_sources
+    attributes:
+      label: Public specifications and documentation
+      description: Link every public source that will guide the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Initial capability subset
+      description: >-
+        List the model operations and behaviors the first version will support.
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Expected limitations and diagnostics
+    validations:
+      required: true
+  - type: checkboxes
+    id: clean_room
+    attributes:
+      label: Clean-room confirmation
+      options:
+        - label: >-
+            The adapter will use public documentation and synthetic or
+            redistributable fixtures only.
+          required: true
