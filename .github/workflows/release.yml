@@ -1,0 +1,99 @@
+---
+name: Release
+
+"on":
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the tested commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Resolve version metadata
+        id: metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          version = project["version"]
+          match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:(a|b|rc)(\d+))?", version)
+          if match is None:
+              raise SystemExit(f"Unsupported project version: {version}")
+
+          base, kind, number = match.groups()
+          labels = {"a": "alpha", "b": "beta", "rc": "rc"}
+          suffix = f"-{labels[kind]}.{number}" if kind else ""
+          tag = f"v{base}{suffix}"
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              print(f"tag={tag}", file=output)
+              print(f"prerelease={'true' if kind else 'false'}", file=output)
+          PY
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ steps.metadata.outputs.tag }}
+          PRERELEASE: ${{ steps.metadata.outputs.prerelease }}
+        shell: bash
+        run: |
+          expected_subject="Release ${TAG#v}"
+          actual_subject="$(git log -1 --pretty=%s)"
+          if [[ "$actual_subject" != "$expected_subject" ]]; then
+            echo "Skipping: commit subject is not '$expected_subject'."
+            exit 0
+          fi
+
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [[ "$current_main" != "$TESTED_SHA" ]]; then
+            echo "Skipping: a newer main commit exists."
+            exit 0
+          fi
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Skipping: release $TAG already exists."
+            exit 0
+          fi
+
+          arguments=(
+            "$TAG"
+            --repo "$GITHUB_REPOSITORY"
+            --target "$TESTED_SHA"
+            --title "ETLIR ${TAG#v}"
+          )
+          notes_file="docs/releases/${TAG}.md"
+          if [[ -f "$notes_file" ]]; then
+            arguments+=(--notes-file "$notes_file")
+          else
+            arguments+=(--generate-notes)
+          fi
+          if [[ "$PRERELEASE" == "true" ]]; then
+            arguments+=(--prerelease)
+          fi
+
+          gh release create "${arguments[@]}"
