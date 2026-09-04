@@ -35,7 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "mypy>=1.13,<2",
+  "mypy>=1.13,<3",
   "pytest>=8,<10",
   "ruff>=0.8,<1",
   "types-jsonschema>=4.23",
