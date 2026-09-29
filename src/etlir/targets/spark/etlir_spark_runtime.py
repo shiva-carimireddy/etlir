@@ -23,6 +23,7 @@ from typing import Any
 from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
+from pyspark.sql.window import Window
 
 RUNTIME_VERSION = "1"
 
@@ -86,6 +87,28 @@ def substr(s: Column, start: Column, length: Column | None = None) -> Column:
         .when(ln <= 0, F.lit(""))
         .otherwise(s.substr(pos, ln))
     )
+
+
+def lookup(
+    inp: DataFrame, lk: DataFrame, on: Column, policy: str, order: list[str], name: str
+) -> DataFrame:
+    """Canonical lookup: left join ``inp`` to ``lk`` on ``on`` and apply the policy.
+
+    ``any`` keeps the first match when lookup rows are sorted by ``order`` ascending with
+    NULLs last; ``error`` fails if an input row has several matches; ``all`` keeps all.
+    """
+    if policy == "all":
+        return inp.join(lk, on=on, how="left")
+    rid, hit, rn = "__etlir_rid", "__etlir_hit", "__etlir_rn"
+    left = inp.withColumn(rid, F.monotonically_increasing_id())
+    joined = left.join(lk.withColumn(hit, F.lit(1)), on=on, how="left")
+    if policy == "error":
+        dup = joined.groupBy(rid).agg(F.count(hit).alias("n")).filter(F.col("n") > 1).limit(1)
+        if dup.count():
+            raise RuntimeError(f"lookup {name}: an input row has more than one match")
+        return joined
+    window = Window.partitionBy(rid).orderBy(*[col(c).asc_nulls_last() for c in order])
+    return joined.withColumn(rn, F.row_number().over(window)).filter(F.col(rn) == 1)
 
 
 # ---------------------------------------------------------------------- dataset I/O

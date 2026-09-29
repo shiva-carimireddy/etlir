@@ -14,10 +14,12 @@ Every rule id used in provenance is ``pc.*`` and documented in docs/sources/powe
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 from etlir.canonical.functions import NUMERIC
+from etlir.canonical.invariants import walk_expression
 from etlir.canonical.model import (
     AggregateOp,
     Aggregation,
@@ -28,6 +30,7 @@ from etlir.canonical.model import (
     CastNode,
     Column,
     ColumnMapping,
+    ColumnRefNode,
     DataEdge,
     Dataflow,
     Dataset,
@@ -41,6 +44,7 @@ from etlir.canonical.model import (
     FilterOp,
     JoinOp,
     LiteralNode,
+    LookupOp,
     OpaqueNode,
     Operation,
     OperationSpec,
@@ -60,13 +64,23 @@ from etlir.canonical.model import (
     WriteMode,
     WriteOp,
 )
+from etlir.canonical.rowalign import fuse_row_aligned, rename_columns
 from etlir.evidence import Diagnostic, EvidenceRecord, EvidenceStatus, Severity
 from etlir.sources.powercenter.expression import (
     APPROXIMATION_NOTES,
     DIALECT,
     Env,
+    Opaque,
     Translation,
     translate,
+)
+from etlir.sources.powercenter.sql import (
+    Query,
+    SqlUnsupported,
+    Translator,
+    dialect_for,
+    parse_select,
+    plan_select,
 )
 from etlir.sources.powercenter.symbols import Folder, RNode, SymbolTable, make_id
 from etlir.sources.powercenter.types import native_type, port_type
@@ -85,6 +99,8 @@ CODES = {
     "PC-N-002": "Session disables high precision; PowerCenter computes decimals as double.",
     "PC-N-003": "No session defines the write mode; append is assumed.",
     "PC-N-004": "Schedule information is not translated.",
+    "PC-N-005": "SQL override translated; it now runs outside the source database.",
+    "PC-N-006": "Inputs from several row-aligned transformations were fused.",
 }
 
 _ERROR_DEFAULT = re.compile(r"^\s*ERROR\s*\(\s*'transformation error'\s*\)\s*$", re.I)
@@ -179,6 +195,125 @@ class Built:
     rule: str
     status: EvidenceStatus = EvidenceStatus.TRANSFORMED_EQUIVALENT
     notes: list[str] = field(default_factory=list)
+    # Builders that expand into a subgraph (SQL overrides, lookup sources) add operations
+    # and edges; consume_inputs means incoming connectors are already wired by the builder.
+    extra_ops: list[Operation] = field(default_factory=list)
+    extra_edges: list[DataEdge] = field(default_factory=list)
+    consume_inputs: bool = False
+    input_target: str | None = None  # connectors feed this op instead (e.g. lookup-call args)
+
+
+@dataclass
+class LookupParts:
+    cond_text: str
+    cond: Translation  # over the lookup's own port names
+    kind: str
+    status: EvidenceStatus
+    note: str
+    in_ports: list[Port]
+    extra_ops: list[Operation]
+    extra_edges: list[DataEdge]
+    lk_ports: list[Port] = field(default_factory=list)  # lookup columns actually used
+
+
+@dataclass
+class LookupCall:
+    k: int
+    name: str
+    definition: RNode
+    column: str
+    args: list[ExpressionNode]
+    parts: LookupParts
+    ret: Port
+
+
+class LookupCalls:
+    """Resolves ``:LKP.name(args)`` inside an Expression transformation.
+
+    Each distinct call (same lookup, same arguments) becomes: arguments computed by a
+    derive step, then a canonical lookup returning the lookup's return port as column
+    ``__lkp<k>``, which the expression reads. Problems make only the calling expression
+    opaque.
+    """
+
+    def __init__(
+        self,
+        make_parts: Callable[[RNode, str, list[Port], str, str], LookupParts],
+        definitions: dict[tuple[str, str], RNode | None],
+        oid: str,
+    ) -> None:
+        self.make_parts = make_parts
+        self.definitions = {
+            k[0].upper(): v for k, v in definitions.items() if k[1] == "Lookup Procedure"
+        }
+        self.names = {k[0].upper(): k[0] for k in definitions if k[1] == "Lookup Procedure"}
+        self.oid = oid
+        self.calls: dict[str, LookupCall] = {}
+
+    def __call__(
+        self, name: str, args: list[tuple[ExpressionNode, DataType]]
+    ) -> tuple[ExpressionNode, DataType]:
+        definition = self.definitions.get(name.upper())
+        if definition is None:
+            raise Opaque(f"lookup {name} is not in the mapping")
+        ports = _ports(definition)
+        in_ports = [p for p in ports if "INPUT" in p.porttype]
+        rets = [p for p in ports if "RETURN" in p.porttype] or [
+            p for p in ports if p.is_output and "LOOKUP" in p.porttype
+        ]
+        if len(rets) != 1:
+            raise Opaque(f"lookup {name} has no single return port")
+        if len(args) != len(in_ports):
+            raise Opaque(f"lookup {name} takes {len(in_ports)} arguments, got {len(args)}")
+        nodes: list[ExpressionNode] = []
+        for (node, typ), port in zip(args, in_ports, strict=True):
+            converted = convert(Translation(node, typ, set()), port.type, "")
+            if isinstance(converted, OpaqueNode):
+                raise Opaque(f"lookup {name} argument {port.name}: {converted.reason}")
+            nodes.append(converted)
+        key = name.upper() + "|" + "|".join(n.model_dump_json() for n in nodes)
+        if key not in self.calls:
+            k = len(self.calls) + 1
+            lookup_id = make_id("op", f"lkp{k}", parent=self.oid)
+            try:
+                parts = self.make_parts(
+                    definition, self.names[name.upper()], ports, lookup_id, f"lkp{k}."
+                )
+            except Unsupported as exc:
+                raise Opaque(f"lookup {name}: {exc}") from exc
+            if parts.kind == "all":
+                raise Opaque(f"lookup {name} returns all matches (not allowed in expressions)")
+            self.calls[key] = LookupCall(k, name, definition, f"__lkp{k}", nodes, parts, rets[0])
+        call = self.calls[key]
+        return ColumnRefNode(name=call.column), call.ret.type
+
+
+@dataclass
+class FlowCtx:
+    op_id: Callable[[tuple[str, str]], str]
+    definitions: dict[tuple[str, str], RNode | None]
+    outgoing: dict[tuple[str, str], list[Connector]]
+
+
+_LOOKUP_POLICY = {
+    "use any value": ("any", EvidenceStatus.TRANSFORMED_EQUIVALENT, ""),
+    "return all values": ("all", EvidenceStatus.TRANSFORMED_EQUIVALENT, ""),
+    "use first value": (
+        "error",
+        EvidenceStatus.APPROXIMATED,
+        "first-value choice depends on cache order; runs only if keys are unique",
+    ),
+    "use last value": (
+        "error",
+        EvidenceStatus.APPROXIMATED,
+        "last-value choice depends on cache order; runs only if keys are unique",
+    ),
+    "report error": (
+        "error",
+        EvidenceStatus.APPROXIMATED,
+        "PowerCenter reports the row; ETLIR fails the task on a duplicate match",
+    ),
+}
 
 
 class Normalizer:
@@ -338,10 +473,14 @@ class Normalizer:
     # ------------------------------------------------------------------ parameters
 
     def mapping_env(self, folder: Folder, mapping: RNode) -> Env:
+        """Mapping parameters, and mapping variables this mapping never modifies, are
+        constant for a run and become canonical parameters. Variables changed with
+        SETVARIABLE (or its kin) inside this mapping carry state and stay opaque."""
         env = Env()
+        modified = self.modified_variables(mapping)
         for v in mapping.children("MAPPINGVARIABLE"):
             key = v.name.lstrip("$").upper()
-            if v.get("ISPARAM") != "YES":
+            if v.get("ISPARAM") != "YES" and key in modified:
                 env.stateful.add(key)
                 continue
             pid = make_id("prm", folder.repository, folder.name, mapping.name, v.name.lstrip("$"))
@@ -358,11 +497,30 @@ class Normalizer:
                     if sensitive or v.get("DEFAULTVALUE") == ""
                     else v.get("DEFAULTVALUE"),
                     sensitive=sensitive,
-                    source=self.ref(v, "pc.parameter.mapping"),
+                    source=self.ref(
+                        v,
+                        "pc.parameter.mapping"
+                        if v.get("ISPARAM") == "YES"
+                        else "pc.parameter.mapping-variable",
+                    ),
                 ),
             )
             env.parameters[key] = (pid, ptype)
         return env
+
+    @staticmethod
+    def modified_variables(mapping: RNode) -> set[str]:
+        pattern = re.compile(r"SET(?:MAX|MIN|COUNT)?VARIABLE\s*\(\s*\$\$(\w+)", re.I)
+        found: set[str] = set()
+
+        def scan(node: RNode) -> None:
+            for f in node.children("TRANSFORMFIELD"):
+                found.update(m.group(1).upper() for m in pattern.finditer(f.get("EXPRESSION")))
+            for child in node.children("TRANSFORMATION"):
+                scan(child)
+
+        scan(mapping)
+        return found
 
     # ------------------------------------------------------------------ dataflow
 
@@ -398,8 +556,8 @@ class Normalizer:
         for key, inst in instances.items():
             definitions[key] = self.resolve_instance(folder, inst, local)
         name_count: dict[str, int] = {}
-        for name, _ in instances:
-            name_count[name] = name_count.get(name, 0) + 1
+        for inst_name, _ in instances:
+            name_count[inst_name] = name_count.get(inst_name, 0) + 1
 
         def op_id(key: tuple[str, str]) -> str:
             if name_count.get(key[0], 0) > 1:
@@ -424,12 +582,16 @@ class Normalizer:
         operations: list[Operation] = []
         expressions: list[Expression] = []
         edges: list[DataEdge] = []
+        native_kind: dict[str, str] = {}
         uses_decimal = False
+        ctx = FlowCtx(op_id=op_id, definitions=definitions, outgoing=outgoing)
         for inst_key, inst in instances.items():
             oid = op_id(inst_key)
             definition = definitions[inst_key]
             ttype = inst.get("TRANSFORMATION_TYPE")
             ins = incoming.get(inst_key, [])
+            if ttype == "Lookup Procedure" and not ins and not outgoing.get(inst_key):
+                continue  # unconnected lookup: a function, materialized at its call sites
             ups = sorted({(c.from_inst, upstream(c)[0]) for c in ins})
             anchor = (
                 inst
@@ -453,6 +615,7 @@ class Normalizer:
                     oid,
                     expressions,
                     base_env,
+                    ctx,
                 )
             except Unsupported as exc:
                 outputs = self.unsupported_outputs(definition, outgoing.get(inst_key, []), upstream)
@@ -463,11 +626,25 @@ class Normalizer:
                     exc.status,
                 )
             src = self.ref(anchor, built.rule)
+            native_kind[oid] = ttype or inst.get("TYPE")
             operations.append(Operation(id=oid, spec=built.spec, outputs=built.outputs, source=src))
             self.record(oid, built.status, src)
-            uses_decimal = uses_decimal or any(
-                c.type.kind is TypeKind.DECIMAL for g in built.outputs for c in g.columns
+            for extra in built.extra_ops:
+                operations.append(extra)
+                self.record(extra.id, built.status, extra.source)
+            edges.extend(built.extra_edges)
+            uses_decimal = (
+                uses_decimal
+                or any(
+                    c.type.kind is TypeKind.DECIMAL
+                    for op in [*built.extra_ops]
+                    for g in op.outputs
+                    for c in g.columns
+                )
+                or any(c.type.kind is TypeKind.DECIMAL for g in built.outputs for c in g.columns)
             )
+            if built.consume_inputs:
+                continue
 
             # Edges: one per (upstream instance, group, slot).
             grouped: dict[tuple[tuple[str, str], str, str], list[ColumnMapping]] = {}
@@ -488,7 +665,7 @@ class Normalizer:
                     DataEdge(
                         from_operation=op_id(frm),
                         from_group=group,
-                        to_operation=oid,
+                        to_operation=built.input_target or oid,
                         to_input=slot,
                         columns=maps,
                     )
@@ -507,7 +684,7 @@ class Normalizer:
                 df_id,
                 df_src,
             )
-        self.dataflows[df_id] = Dataflow(
+        flow = Dataflow(
             id=df_id,
             name=name,
             operations=operations,
@@ -515,6 +692,30 @@ class Normalizer:
             expressions=expressions,
             source=df_src,
         )
+        merges = {
+            e.to_operation
+            for e in edges
+            if sum(
+                1 for x in edges if x.to_operation == e.to_operation and x.to_input == e.to_input
+            )
+            > 1
+        }
+        flow, failures = fuse_row_aligned(flow, self.datasets)
+        for failure in failures:
+            flow = self.mark_unsupported(
+                flow, failure.op_id, native_kind.get(failure.op_id, ""), str(failure)
+            )
+        for op in flow.operations:
+            if op.id in merges and op.id not in {f.op_id for f in failures}:
+                self.diag(
+                    "PC-N-006",
+                    Severity.INFO,
+                    "Inputs from several row-aligned transformations were fused into "
+                    "one row stream.",
+                    op.id,
+                    op.source,
+                )
+        self.dataflows[df_id] = flow
         self.record(df_id, status, df_src, codes)
         for e in expressions:
             est = EvidenceStatus.TRANSFORMED_EQUIVALENT
@@ -581,11 +782,10 @@ class Normalizer:
         oid: str,
         expressions: list[Expression],
         base_env: Env,
+        ctx: FlowCtx,
     ) -> Built:
-        if ttype != "Joiner" and len(ups) > 1:
-            raise Unsupported(
-                "inputs from several upstream transformations (row-aligned merge) are not supported"
-            )
+        # Several upstreams into one non-join transformation are row-aligned merges; they
+        # are fused after the dataflow is built (or rejected there if not aligned).
         if ttype == "Source Definition":
             return self.build_read(folder, definition)
         if ttype == "Target Definition":
@@ -596,16 +796,18 @@ class Normalizer:
         ports = _ports(definition)
         connected = {c.to_field for c in ins}
 
-        def add_expr(suffix: str, text: str, t: Translation, anchor: RNode) -> str:
+        def add_expr(
+            suffix: str, text: str, t: Translation, anchor: RNode, dialect: str = DIALECT
+        ) -> str:
             ex_id = make_id("ex", suffix, parent=oid)
-            rule = "pc.expr.opaque" if t.opaque else "pc.expr"
+            rule = "pc.expr.opaque" if t.opaque else ("pc.sql" if dialect != DIALECT else "pc.expr")
             self.expr_notes[ex_id] = set(t.notes)
             expressions.append(
                 Expression(
                     id=ex_id,
                     ast=t.node,
                     original_text=text,
-                    original_dialect=DIALECT,
+                    original_dialect=dialect,
                     result_type=t.type,
                     source=self.ref(anchor, rule),
                 )
@@ -621,9 +823,33 @@ class Normalizer:
             return env
 
         if ttype == "Source Qualifier":
-            return self.build_sq(inst, definition, ports, connected, session)
+            return self.build_sq(
+                folder, inst, definition, ports, ins, session, oid, ctx, add_expr, base_env
+            )
+        if ttype == "Lookup Procedure":
+            return self.build_lookup(
+                folder, inst, definition, ports, ins, session, oid, add_expr, env_for, base_env
+            )
         if ttype == "Expression":
-            return self.build_expression(ports, connected, env_for, add_expr, definition)
+
+            def make_parts(
+                d: RNode, name: str, lk_ports_all: list[Port], lookup_id: str, prefix: str
+            ) -> LookupParts:
+                return self.lookup_parts(
+                    folder,
+                    name,
+                    d,
+                    lk_ports_all,
+                    session,
+                    lookup_id,
+                    add_expr,
+                    env_for,
+                    base_env,
+                    prefix,
+                )
+
+            calls = LookupCalls(make_parts, ctx.definitions, oid)
+            return self.build_expression(ports, connected, env_for, add_expr, definition, calls)
         if ttype == "Filter":
             self.require_connected(ports, connected)
             cond = definition.attributes("TABLEATTRIBUTE").get("Filter Condition", "") or "TRUE"
@@ -705,41 +931,559 @@ class Normalizer:
             WriteOp(dataset_id=ds_id, mode=mode), [], "pc.op.write", EvidenceStatus.PRESERVED
         )
 
+    @staticmethod
+    def session_overrides(
+        session: RNode | None, inst_name: str, names: tuple[str, ...]
+    ) -> dict[str, str]:
+        found: dict[str, str] = {}
+        if session is None:
+            return found
+        for node in [
+            *session.children("SESSTRANSFORMATIONINST"),
+            *session.children("SESSIONEXTENSION"),
+        ]:
+            if node.get("SINSTANCENAME") == inst_name:
+                for k, v in node.attributes().items():
+                    if k in names and v.strip():
+                        found[k] = v
+        return found
+
     def build_sq(
         self,
+        folder: Folder,
         inst: RNode,
         definition: RNode,
         ports: list[Port],
-        connected: set[str],
+        ins: list[Connector],
         session: RNode | None,
+        oid: str,
+        ctx: FlowCtx,
+        add_expr: Callable[..., str],
+        base_env: Env,
     ) -> Built:
         attrs = definition.attributes("TABLEATTRIBUTE")
-        found = [k for k in _SQ_OVERRIDES if attrs.get(k, "").strip()]
-        if session is not None:
-            for node in [
-                *session.children("SESSTRANSFORMATIONINST"),
-                *session.children("SESSIONEXTENSION"),
-            ]:
-                if node.get("SINSTANCENAME") == inst.name:
-                    a = node.attributes()
-                    found += [k for k in _SQ_OVERRIDES if a.get(k, "").strip()]
-        if attrs.get("Select Distinct", "NO") == "YES":
-            found.append("Select Distinct")
-        if found:
-            raise Unsupported(
-                f"source qualifier uses {sorted(set(found))} (SQL overrides are "
-                "not in the accepted subset)"
+        ov = {k: attrs.get(k, "") for k in _SQ_OVERRIDES}
+        ov |= self.session_overrides(session, inst.name, _SQ_OVERRIDES)
+        if ov["Pre SQL"].strip() or ov["Post SQL"].strip():
+            raise Unsupported("pre/post SQL statements have side effects and are not executed")
+        distinct = attrs.get("Select Distinct", "NO") == "YES"
+        sources = sorted({c.from_inst for c in ins})
+        if any(k[1] != "Source Definition" for k in sources):
+            raise Unsupported("source qualifier fed by a non-source transformation")
+        connected = {c.to_field for c in ins}
+        uses_sql = any(ov[k].strip() for k in ("Sql Query", "Source Filter", "User Defined Join"))
+        if not uses_sql and not distinct:
+            if len(sources) > 1:
+                raise Unsupported(
+                    "multi-source qualifier without a user-defined join (key-based default join)"
+                )
+            self.require_connected(ports, connected)
+            cols = [Column(name=p.name, type=p.type) for p in ports if p.is_output]
+            return Built(
+                ProjectOp(columns=[c.name for c in cols]),
+                [OutputGroup(columns=cols)],
+                "pc.op.source-qualifier",
+                EvidenceStatus.PRESERVED,
             )
-        self.require_connected(ports, connected)
-        cols = [Column(name=p.name, type=p.type) for p in ports if p.is_output]
+        # SQL path: tables are the associated source definitions.
+        tables: dict[str, tuple[str, str]] = {}  # upper name -> (read op id, dataset id)
+        dbtypes = []
+        for key in sources:
+            d = ctx.definitions.get(key)
+            if d is None:
+                raise Unsupported("source definition not found", EvidenceStatus.MISSING_INFORMATION)
+            ds_id = self.dataset_id(folder, "src", d.get("DBDNAME"), d.name)
+            tables[d.name.upper()] = (ctx.op_id(key), ds_id)
+            dbtypes.append(d.get("DATABASETYPE"))
+        dialect = dialect_for(dbtypes[0]) if dbtypes else ""
+        out_ports = [p for p in ports if p.is_output]
+        try:
+            if ov["Sql Query"].strip():
+                query = plan_select(
+                    parse_select(ov["Sql Query"], dialect), lambda n: self.table_columns(tables, n)
+                )
+                items = query.items
+                if len(items) != len(out_ports):
+                    wired = {
+                        c.from_field for c in ctx.outgoing.get((inst.name, "Source Qualifier"), [])
+                    }
+                    out_ports = [p for p in out_ports if p.name in wired]
+                if len(items) != len(out_ports):
+                    raise SqlUnsupported(
+                        f"query returns {len(items)} columns for {len(out_ports)} ports"
+                    )
+                text = ov["Sql Query"]
+            else:
+                where = " AND ".join(
+                    f"({ov[k]})" for k in ("User Defined Join", "Source Filter") if ov[k].strip()
+                )
+                names = [ctx.definitions[k].name for k in sources]  # type: ignore[union-attr]
+                synthetic = f"SELECT 1 FROM {', '.join(names)}" + (
+                    f" WHERE {where}" if where else ""
+                )
+                query = plan_select(
+                    parse_select(synthetic, dialect), lambda n: self.table_columns(tables, n)
+                )
+                text = synthetic
+                by_port: dict[str, tuple[str, str]] = {}
+                for c in ins:
+                    d = ctx.definitions[c.from_inst]
+                    assert d is not None
+                    by_port[c.to_field] = (d.name, c.from_field)
+                self.require_connected(ports, connected)
+                from sqlglot import exp as sqlexp
+
+                items = [
+                    (p.name, sqlexp.column(by_port[p.name][1], table=by_port[p.name][0]))
+                    for p in out_ports
+                ]
+            ops, edges = self.sql_relation(
+                query,
+                tables,
+                [(p.name, p.type, e) for p, (_, e) in zip(out_ports, items, strict=True)],
+                distinct or query.distinct,
+                oid,
+                definition,
+                add_expr,
+                base_env,
+                dialect,
+            )
+        except SqlUnsupported as exc:
+            raise Unsupported(f"SQL override: {exc}") from exc
+        self.diag(
+            "PC-N-005",
+            Severity.INFO,
+            f"SQL ({dialect or 'generic'} dialect) translated to canonical operations; "
+            "it now runs outside the source database (binary collation assumed).",
+            oid,
+            self.ref(definition, "pc.sql"),
+        )
+        main = ops[-1]
         return Built(
-            ProjectOp(columns=[c.name for c in cols]),
-            [OutputGroup(columns=cols)],
-            "pc.op.source-qualifier",
-            EvidenceStatus.PRESERVED,
+            main.spec,
+            main.outputs,
+            "pc.op.source-qualifier.sql",
+            EvidenceStatus.APPROXIMATED,
+            notes=[text[:200]],
+            extra_ops=ops[:-1],
+            extra_edges=edges,
+            consume_inputs=True,
         )
 
-    def build_expression(self, ports, connected, env_for, add_expr, definition) -> Built:  # type: ignore[no-untyped-def]
+    def table_columns(
+        self, tables: dict[str, tuple[str, str]], name: str
+    ) -> dict[str, DataType] | None:
+        entry = tables.get(name.upper())
+        if entry is None:
+            return None
+        return {c.name: c.type for c in self.datasets[entry[1]].columns}
+
+    def sql_relation(
+        self,
+        query: Query,
+        tables: dict[str, tuple[str, str]],
+        outputs: Sequence[tuple[str, DataType, Any]],
+        distinct: bool,
+        final_id: str,
+        anchor: RNode,
+        add_expr: Callable[..., str],
+        base_env: Env,
+        dialect: str,
+        prefix: str = "",
+    ) -> tuple[list[Operation], list[DataEdge]]:
+        """Canonical ops for a planned query; the last op has id ``final_id``."""
+        from sqlglot import exp as sqlexp
+
+        tr = Translator(query, base_env.parameters, dialect)
+        dialect_tag = f"sql:{dialect or 'generic'}"
+        ops: list[Operation] = []
+        edges: list[DataEdge] = []
+
+        def op(suffix: str, spec: OperationSpec, cols: list[Column], rule: str) -> str:
+            oid = make_id("op", *suffix.split("/"), parent=final_id)
+            ops.append(
+                Operation(
+                    id=oid,
+                    spec=spec,
+                    outputs=[OutputGroup(columns=cols)],
+                    source=self.ref(anchor, rule),
+                )
+            )
+            return oid
+
+        def expr(name: str, node: sqlexp.Expression, boolean: bool) -> str:
+            ast, typ = tr.bool_(node) if boolean else tr.expr(node)
+            t = Translation(ast, typ, {"pc.sql"})
+            return add_expr(
+                prefix + name, node.sql(dialect=dialect or None), t, anchor, dialect_tag
+            )
+
+        current: str | None = None
+        current_cols: list[Column] = []
+        for i, tbl in enumerate(query.tables):
+            read_id, ds_id = tables[tbl.name.upper()]
+            cols = [
+                Column(name=f"{tbl.alias}.{c.name}", type=c.type)
+                for c in self.datasets[ds_id].columns
+            ]
+            q_id = op(
+                f"sql/{tbl.alias}", ProjectOp(columns=[c.name for c in cols]), cols, "pc.sql.table"
+            )
+            edges.append(
+                DataEdge(
+                    from_operation=read_id,
+                    to_operation=q_id,
+                    columns=[
+                        ColumnMapping(from_column=c.name, to_column=f"{tbl.alias}.{c.name}")
+                        for c in self.datasets[ds_id].columns
+                    ],
+                )
+            )
+            if i == 0:
+                current, current_cols = q_id, cols
+                continue
+            kind, cond = query.joins[i - 1]
+            joined = current_cols + cols
+            j_id = op(
+                f"sql/join/{tbl.alias}",
+                JoinOp(
+                    join_type=kind,
+                    condition_expression_id=expr(f"sql.join.{tbl.alias}", cond, True),
+                ),
+                joined,
+                "pc.sql.join",
+            )
+            edges.append(DataEdge(from_operation=current or "", to_operation=j_id, to_input="left"))
+            edges.append(DataEdge(from_operation=q_id, to_operation=j_id, to_input="right"))
+            current, current_cols = j_id, joined
+        if query.filters:
+            where: sqlexp.Expression = query.filters[0]
+            for extra in query.filters[1:]:
+                where = cast(sqlexp.Expression, sqlexp.and_(where, extra))
+            f_id = op(
+                "sql/where",
+                FilterOp(predicate_expression_id=expr("sql.where", where, True)),
+                current_cols,
+                "pc.sql.where",
+            )
+            edges.append(DataEdge(from_operation=current or "", to_operation=f_id))
+            current = f_id
+        assignments = []
+        out_cols = []
+        if query.aggregate:
+            keys: set[str] = set()
+            for g in query.group_by:
+                if isinstance(g, sqlexp.Column):
+                    node0, _ = tr.column(g)
+                    assert isinstance(node0, ColumnRefNode)
+                    keys.add(node0.name)
+            tr.group_keys = keys
+        for name, typ, node in outputs:
+            assert isinstance(node, sqlexp.Expression)
+            ast, found = tr.expr(node)
+            converted = convert(Translation(ast, found, set()), typ, node.sql())
+            if isinstance(converted, OpaqueNode):
+                raise SqlUnsupported(f"{name}: {converted.reason}")
+            ex_id = add_expr(
+                f"{prefix}sql.select.{name}",
+                node.sql(dialect=dialect or None),
+                Translation(converted, typ, {"pc.sql"}),
+                anchor,
+                dialect_tag,
+            )
+            assignments.append(Assignment(column=name, expression_id=ex_id))
+            out_cols.append(Column(name=name, type=typ))
+        select_id = final_id if not distinct else make_id("op", "sql", "select", parent=final_id)
+        select_spec: OperationSpec = DeriveOp(assignments=assignments)
+        if query.aggregate:
+            select_spec = AggregateOp(
+                group_by=sorted(tr.group_keys or set()),
+                aggregations=[
+                    Aggregation(column=a.column, expression_id=a.expression_id) for a in assignments
+                ],
+            )
+        ops.append(
+            Operation(
+                id=select_id,
+                spec=select_spec,
+                outputs=[OutputGroup(columns=out_cols)],
+                source=self.ref(anchor, "pc.sql.select"),
+            )
+        )
+        edges.append(DataEdge(from_operation=current or "", to_operation=select_id))
+        if distinct:
+            ops.append(
+                Operation(
+                    id=final_id,
+                    spec=AggregateOp(group_by=[c.name for c in out_cols], aggregations=[]),
+                    outputs=[OutputGroup(columns=out_cols)],
+                    source=self.ref(anchor, "pc.sql.distinct"),
+                )
+            )
+            edges.append(DataEdge(from_operation=select_id, to_operation=final_id))
+        return ops, edges
+
+    # ------------------------------------------------------------------ lookup
+
+    def lookup_table(self, folder: Folder, name: str) -> tuple[str, RNode] | None:
+        """A source or target definition named like the lookup table."""
+        for kind, tag in (("src", "SOURCE"), ("tgt", "TARGET")):
+            for key, node in folder.items(tag):
+                if key[-1].upper() == name.upper():
+                    ds_id = self.dataset_id(folder, kind, *key)
+                    if ds_id in self.datasets:
+                        return ds_id, node
+        return None
+
+    def lookup_parts(
+        self,
+        folder: Folder,
+        inst_name: str,
+        definition: RNode,
+        ports: list[Port],
+        session: RNode | None,
+        lookup_id: str,
+        add_expr: Callable[..., str],
+        env_for: Callable[..., Env],
+        base_env: Env,
+        prefix: str,
+    ) -> LookupParts:
+        """Shared by connected lookups and unconnected lookup calls: policy, condition,
+        and the lookup-source subgraph wired into ``lookup_id``'s ``lookup`` slot."""
+        names = ("Lookup Sql Override", "Lookup Source Filter", "Lookup table name")
+        attrs = definition.attributes("TABLEATTRIBUTE")
+        attrs |= self.session_overrides(session, inst_name, names)
+        if attrs.get("Dynamic Lookup Cache", "NO") == "YES":
+            raise Unsupported("dynamic lookup cache (the lookup changes while rows flow)")
+        flat = attrs.get("Source Type", "Database").lower().startswith("flat")
+        if flat and attrs.get("Case Sensitive String Comparison", "YES") == "NO":
+            raise Unsupported("case-insensitive flat-file lookup")
+        policy_text = (attrs.get("Lookup policy on multiple match") or "").lower()
+        policy = next((v for k, v in _LOOKUP_POLICY.items() if policy_text.startswith(k)), None)
+        if policy is None:
+            policy = (
+                "error",
+                EvidenceStatus.APPROXIMATED,
+                f"policy '{policy_text or 'unset'}'; runs only if keys are unique",
+            )
+        for p in ports:
+            if p.default.strip() and not _ERROR_DEFAULT.match(p.default):
+                raise Unsupported(f"port {p.name} has a default value (no-match replacement)")
+        in_ports = [p for p in ports if "INPUT" in p.porttype]
+        lk_ports = [p for p in ports if "LOOKUP" in p.porttype]
+        if not lk_ports:
+            raise Unsupported("lookup without lookup ports")
+        cond_text = attrs.get("Lookup condition", "").strip()
+        if not cond_text:
+            raise Unsupported("lookup without a condition")
+        cond = as_condition(translate(cond_text, env_for(in_ports + lk_ports)), cond_text)
+        if cond.opaque:
+            raise Unsupported(f"lookup condition: {getattr(cond.node, 'reason', '')}")
+        # Only lookup ports used by the condition or returned matter; others (for example
+        # ports an override does not select) cannot affect the result and are dropped.
+        used = {n.name for n in walk_expression(cond.node) if isinstance(n, ColumnRefNode)}
+        lk_ports = [p for p in lk_ports if p.name in used or p.is_output]
+
+        table = (attrs.get("Lookup table name") or definition.name).strip()
+        override = attrs.get("Lookup Sql Override", "").strip()
+        sfilter = attrs.get("Lookup Source Filter", "").strip()
+        extra_ops: list[Operation] = []
+        extra_edges: list[DataEdge] = []
+        existing = self.lookup_table(folder, table)
+        lk_names = {p.name.upper(): p for p in lk_ports}
+        read_id = make_id("op", "lookup-read", parent=lookup_id)
+        try:
+            if override or sfilter:
+                if existing is None:
+                    raise SqlUnsupported(f"table {table} has no source/target definition")
+                ds_id, tnode = existing
+                dialect = dialect_for(tnode.get("DATABASETYPE"))
+                extra_ops.append(
+                    Operation(
+                        id=read_id,
+                        spec=ReadOp(dataset_id=ds_id),
+                        source=self.ref(definition, "pc.lookup.read"),
+                    )
+                )
+                tables = {tnode.name.upper(): (read_id, ds_id)}
+                from sqlglot import exp as sqlexp
+
+                if override:
+                    query = plan_select(
+                        parse_select(override, dialect), lambda n: self.table_columns(tables, n)
+                    )
+                    by_alias = {(a or "").upper(): e for a, e in query.items}
+                    missing = [p.name for p in lk_ports if p.name.upper() not in by_alias]
+                    if missing:
+                        raise SqlUnsupported(f"override does not return lookup ports {missing}")
+                    outputs: list[tuple[str, DataType, Any]] = [
+                        (p.name, p.type, by_alias[p.name.upper()]) for p in lk_ports
+                    ]
+                    distinct = query.distinct
+                else:
+                    query = plan_select(
+                        parse_select(f"SELECT 1 FROM {tnode.name} WHERE {sfilter}", dialect),
+                        lambda n: self.table_columns(tables, n),
+                    )
+                    cols = {c.name.upper(): c.name for c in self.datasets[ds_id].columns}
+                    missing = [p.name for p in lk_ports if p.name.upper() not in cols]
+                    if missing:
+                        raise SqlUnsupported(f"table {table} lacks lookup ports {missing}")
+                    outputs = [
+                        (p.name, p.type, sqlexp.column(cols[p.name.upper()], table=tnode.name))
+                        for p in lk_ports
+                    ]
+                    distinct = False
+                src_id = make_id("op", "lookup-source", parent=lookup_id)
+                ops, edges = self.sql_relation(
+                    query,
+                    tables,
+                    outputs,
+                    distinct,
+                    src_id,
+                    definition,
+                    add_expr,
+                    base_env,
+                    dialect,
+                    prefix=prefix,
+                )
+                extra_ops += ops
+                extra_edges += edges
+                extra_edges.append(
+                    DataEdge(from_operation=src_id, to_operation=lookup_id, to_input="lookup")
+                )
+            else:
+                if existing is not None and {p.name.upper() for p in lk_ports} <= {
+                    c.name.upper() for c in self.datasets[existing[0]].columns
+                }:
+                    ds_id = existing[0]
+                    mapping = [
+                        ColumnMapping(from_column=c.name, to_column=lk_names[c.name.upper()].name)
+                        for c in self.datasets[ds_id].columns
+                        if c.name.upper() in lk_names
+                    ]
+                else:
+                    ds_id = self.lookup_dataset(folder, definition, table, lk_ports, flat)
+                    mapping = [
+                        ColumnMapping(from_column=p.name, to_column=p.name) for p in lk_ports
+                    ]
+                extra_ops.append(
+                    Operation(
+                        id=read_id,
+                        spec=ReadOp(dataset_id=ds_id),
+                        source=self.ref(definition, "pc.lookup.read"),
+                    )
+                )
+                extra_edges.append(
+                    DataEdge(
+                        from_operation=read_id,
+                        to_operation=lookup_id,
+                        to_input="lookup",
+                        columns=mapping,
+                    )
+                )
+        except SqlUnsupported as exc:
+            raise Unsupported(f"lookup source SQL: {exc}") from exc
+        kind, status, note = policy
+        if override or sfilter:
+            status = EvidenceStatus.APPROXIMATED
+        return LookupParts(
+            cond_text, cond, kind, status, note, in_ports, extra_ops, extra_edges, lk_ports
+        )
+
+    def build_lookup(
+        self,
+        folder: Folder,
+        inst: RNode,
+        definition: RNode,
+        ports: list[Port],
+        ins: list[Connector],
+        session: RNode | None,
+        oid: str,
+        add_expr: Callable[..., str],
+        env_for: Callable[..., Env],
+        base_env: Env,
+    ) -> Built:
+        parts = self.lookup_parts(
+            folder, inst.name, definition, ports, session, oid, add_expr, env_for, base_env, ""
+        )
+        self.require_connected(parts.in_ports, {c.to_field for c in ins})
+        cond_id = add_expr("condition", parts.cond_text, parts.cond, definition)
+        returns = [
+            ColumnMapping(from_column=p.name, to_column=p.name)
+            for p in ports
+            if p.is_output and "LOOKUP" in p.porttype
+        ]
+        outs = [Column(name=p.name, type=p.type) for p in ports if p.is_output]
+        return Built(
+            LookupOp(
+                condition_expression_id=cond_id,
+                on_multiple_match=parts.kind,
+                returns=returns,
+            ),
+            [OutputGroup(columns=outs)],
+            "pc.op.lookup",
+            parts.status,
+            notes=[parts.note] if parts.note else [],
+            extra_ops=parts.extra_ops,
+            extra_edges=parts.extra_edges,
+        )
+
+    def lookup_dataset(
+        self, folder: Folder, definition: RNode, table: str, lk_ports: list[Port], flat: bool
+    ) -> str:
+        """Dataset described by the lookup's own ports (no matching definition exists)."""
+        key = (table, definition.name)
+        ds_id = make_id("ds", folder.repository, folder.name, "lkp", *key)
+        if ds_id not in self.datasets:
+            src = self.ref(definition, "pc.dataset.lookup")
+            bind_id = make_id("bind", folder.repository, folder.name, "lkp", *key)
+            self.bindings[bind_id] = Binding(
+                id=bind_id,
+                name=table,
+                resource_kind="path" if flat else "connection",
+                reference="/".join((folder.name, "lookup", table)),
+                source=src,
+            )
+            self.datasets[ds_id] = Dataset(
+                id=ds_id,
+                name=table,
+                kind=DatasetKind.FILE if flat else DatasetKind.TABLE,
+                columns=[Column(name=p.name, type=p.type) for p in lk_ports],
+                binding_id=bind_id,
+                format="delimited" if flat else None,
+                source=src,
+            )
+            self.record(ds_id, EvidenceStatus.PRESERVED, src)
+        return ds_id
+
+    def mark_unsupported(self, flow: Dataflow, op_id: str, native: str, reason: str) -> Dataflow:
+        ops = []
+        for op in flow.operations:
+            if op.id == op_id:
+                op = op.model_copy(
+                    update={"spec": UnsupportedOp(native_kind=native, reason=reason)}
+                )
+                self.evidence = [e for e in self.evidence if e.subject_id != op_id]
+                self.record(op_id, EvidenceStatus.UNSUPPORTED, op.source)
+            ops.append(op)
+        edges, n = [], 0
+        for e in flow.edges:
+            if e.to_operation == op_id:
+                n += 1
+                e = e.model_copy(update={"to_input": f"in{n}"})
+            edges.append(e)
+        return flow.model_copy(update={"operations": ops, "edges": edges})
+
+    def build_expression(
+        self,
+        ports: list[Port],
+        connected: set[str],
+        env_for: Callable[..., Env],
+        add_expr: Callable[..., str],
+        definition: RNode,
+        calls: LookupCalls | None = None,
+    ) -> Built:
         for p in ports:
             if p.is_input and p.default.strip():
                 raise Unsupported(f"input port {p.name} replaces NULLs with a default value")
@@ -752,6 +1496,7 @@ class Normalizer:
                 raise Unsupported(f"output port {p.name} has a custom error default value")
         inputs = [p for p in ports if p.is_input and p.name in connected]
         env: Env = env_for(inputs)
+        env.lookup_call = calls
         for p in ports:
             if p.is_input and p.name not in connected:
                 env.inline[p.name] = (LiteralNode(value=None, type=p.type), p.type)
@@ -789,9 +1534,96 @@ class Normalizer:
             assignments.append(
                 Assignment(column=p.name, expression_id=add_expr(p.name, p.expression, t, p.node))
             )
-        return Built(
+        built = Built(
             DeriveOp(assignments=assignments), [OutputGroup(columns=cols)], "pc.op.expression"
         )
+        if calls is not None and calls.calls:
+            self.materialize_lookup_calls(built, calls, inputs, add_expr, definition)
+        return built
+
+    def materialize_lookup_calls(
+        self,
+        built: Built,
+        calls: LookupCalls,
+        inputs: list[Port],
+        add_expr: Callable[..., str],
+        anchor: RNode,
+    ) -> None:
+        """args derive -> lookup per call -> the expression (which reads ``__lkp<k>``)."""
+        oid = calls.oid
+        args_id = make_id("op", "lkp-args", parent=oid)
+        cols = [Column(name=p.name, type=p.type) for p in inputs]
+        assignments = []
+        for call in calls.calls.values():
+            for port, node in zip(call.parts.in_ports, call.args, strict=True):
+                name = f"{call.column}.{port.name}"
+                ex = add_expr(
+                    f"lkp{call.k}.arg.{port.name}",
+                    f":LKP.{call.name} argument",
+                    Translation(node, port.type, set()),
+                    anchor,
+                )
+                assignments.append(Assignment(column=name, expression_id=ex))
+                cols.append(Column(name=name, type=port.type))
+        built.extra_ops.append(
+            Operation(
+                id=args_id,
+                spec=DeriveOp(assignments=assignments),
+                outputs=[OutputGroup(columns=list(cols))],
+                source=self.ref(anchor, "pc.lookup-call.args"),
+            )
+        )
+        prev = args_id
+        for call in calls.calls.values():
+            lookup_id = make_id("op", f"lkp{call.k}", parent=oid)
+            rename = {p.name: f"{call.column}.{p.name}" for p in call.parts.in_ports}
+            # Lookup-side columns are namespaced per call so they cannot collide with the
+            # calling transformation's own columns.
+            side = {p.name: f"{call.column}#{p.name}" for p in call.parts.lk_ports}
+            rename |= side
+            cond = Translation(
+                rename_columns(call.parts.cond.node, rename),
+                call.parts.cond.type,
+                call.parts.cond.notes,
+            )
+            cond_id = add_expr(
+                f"lkp{call.k}.condition", call.parts.cond_text, cond, call.definition
+            )
+            cols = [*cols, Column(name=call.column, type=call.ret.type)]
+            built.extra_ops.extend(call.parts.extra_ops)
+            for edge in call.parts.extra_edges:
+                if edge.to_operation == lookup_id and edge.to_input == "lookup":
+                    maps = [(m.from_column, m.to_column) for m in edge.columns] or [
+                        (n, n) for n in side
+                    ]
+                    edge = edge.model_copy(
+                        update={
+                            "columns": [
+                                ColumnMapping(from_column=f, to_column=side[t]) for f, t in maps
+                            ]
+                        }
+                    )
+                built.extra_edges.append(edge)
+            built.extra_ops.append(
+                Operation(
+                    id=lookup_id,
+                    spec=LookupOp(
+                        condition_expression_id=cond_id,
+                        on_multiple_match=call.parts.kind,
+                        returns=[
+                            ColumnMapping(from_column=side[call.ret.name], to_column=call.column)
+                        ],
+                    ),
+                    outputs=[OutputGroup(columns=list(cols))],
+                    source=self.ref(call.definition, "pc.lookup-call"),
+                )
+            )
+            built.extra_edges.append(DataEdge(from_operation=prev, to_operation=lookup_id))
+            prev = lookup_id
+            if call.parts.status is not EvidenceStatus.TRANSFORMED_EQUIVALENT:
+                built.status = call.parts.status
+        built.extra_edges.append(DataEdge(from_operation=prev, to_operation=oid))
+        built.input_target = args_id
 
     def build_router(self, definition, ports, connected, env_for, add_expr) -> Built:  # type: ignore[no-untyped-def]
         inputs = [p for p in ports if p.group == "INPUT" or p.porttype == "INPUT"]

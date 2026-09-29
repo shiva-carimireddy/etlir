@@ -19,6 +19,15 @@ from etlir.serialization import dumps
 def bindings_example(doc: CanonicalDocument, emitted: set[str]) -> dict[str, Any]:
     """Example bindings for every dataset read or written by an emitted dataflow."""
     datasets = {d.id: d for d in doc.datasets}
+    # A dataset written by any emitted dataflow is JSON Lines everywhere, so a later
+    # dataflow (for example a lookup on a dimension loaded earlier) reads what was written.
+    written = {
+        getattr(op.spec, "dataset_id", None)
+        for df in doc.dataflows
+        if df.id in emitted
+        for op in df.operations
+        if op.spec.kind == "write"
+    }
     out: dict[str, Any] = {}
     for df in doc.dataflows:
         if df.id not in emitted:
@@ -28,7 +37,7 @@ def bindings_example(doc: CanonicalDocument, emitted: set[str]) -> dict[str, Any
             if ds_id not in datasets:
                 continue
             ds = datasets[ds_id]
-            is_read = op.spec.kind == "read"
+            is_read = op.spec.kind == "read" and ds_id not in written
             out[ds.binding_id or ds.id] = {
                 "dataset": ds.id,
                 "format": "csv" if is_read else "jsonl",

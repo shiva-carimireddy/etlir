@@ -1,6 +1,6 @@
 # Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
 id = "pc-mixed-blocked"
-title = "Fail-closed behavior: one clean branch, one branch with a lookup, SQL override, stateful variable, command task and custom link condition"
+title = "Fail-closed behavior: a clean branch runs; a sequence generator, a non-row-aligned merge, a SELECT * override, a stateful variable, a command task and a custom link condition are blocked"
 provenance = "original-synthetic"
 license = "Apache-2.0"
 source = "powercenter-xml"
@@ -12,7 +12,7 @@ partition = "behaviorally-comparable"
 allow_partial = true
 
 [expect]
-blocked_tasks = ["cmd_ARCHIVE", "s_m_CUSTOMER_OVERRIDE", "s_m_CUSTOMER_REGION"]
+blocked_tasks = ["cmd_ARCHIVE", "s_m_CUSTOMER_KEYS", "s_m_CUSTOMER_OVERRIDE", "s_m_NOT_ALIGNED"]
 diagnostic_codes = ["IR-V-010", "IR-V-012"]
 
 [bindings]

@@ -1,0 +1,6 @@
+{"ORDER_ID": "1", "CUST_NAME": "Alpha", "SEGMENT": "GOLD", "BAND": "LOW", "REGION": "EMEA", "DISCOUNT_PCT": "10", "NET_AMOUNT": "45.00"}
+{"ORDER_ID": "2", "CUST_NAME": "Beta", "SEGMENT": "SILVER", "BAND": "MID", "REGION": "AMER", "DISCOUNT_PCT": "5", "NET_AMOUNT": "142.50"}
+{"ORDER_ID": "3", "CUST_NAME": null, "SEGMENT": null, "BAND": "MID", "REGION": "EMEA", "DISCOUNT_PCT": null, "NET_AMOUNT": "250.00"}
+{"ORDER_ID": "4", "CUST_NAME": "Gamma", "SEGMENT": "BRONZE", "BAND": "HIGH", "REGION": null, "DISCOUNT_PCT": null, "NET_AMOUNT": "1000.00"}
+{"ORDER_ID": "5", "CUST_NAME": null, "SEGMENT": null, "BAND": "LOW", "REGION": "AMER", "DISCOUNT_PCT": null, "NET_AMOUNT": "99.99"}
+{"ORDER_ID": "6", "CUST_NAME": "Beta", "SEGMENT": "SILVER", "BAND": "MID", "REGION": "EMEA", "DISCOUNT_PCT": "5", "NET_AMOUNT": "95.00"}

@@ -1,0 +1,18 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-row-aligned"
+title = "Row-aligned merges: an expression and a target fed by several branches of one pipeline"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/wf_row_aligned.xml"]
+partition = "behaviorally-comparable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = ["PC-N-006"]
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:ITEMS" = { format = "csv", path = "inputs/items.csv" }
+
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ITEMS_OUT" = "expected/items_out.jsonl"

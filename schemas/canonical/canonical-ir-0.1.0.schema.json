@@ -824,17 +824,12 @@
     },
     "LookupOp": {
       "additionalProperties": false,
+      "description": "For each row of slot ``in``, find the rows of slot ``lookup`` where the condition is\nTRUE (NULL never matches) and return the mapped lookup columns.\n\nInput columns pass through by name; ``returns`` maps lookup columns to output columns,\nwhich are NULL when nothing matches. Column names of the two slots must be disjoint.\n``on_multiple_match``:\n\n* ``any``: one matching row: the first when the lookup slot's columns are sorted\n  ascending in declared order with NULLs last (deterministic);\n* ``error``: the task fails if any input row has more than one match;\n* ``all``: one output row per match (not row-preserving).",
       "properties": {
         "condition_expression_id": {
           "description": "Stable identifier, unique within a CanonicalDocument.",
           "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
           "title": "Condition Expression Id",
-          "type": "string"
-        },
-        "dataset_id": {
-          "description": "Stable identifier, unique within a CanonicalDocument.",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
-          "title": "Dataset Id",
           "type": "string"
         },
         "kind": {
@@ -845,28 +840,25 @@
         },
         "on_multiple_match": {
           "enum": [
-            "error",
-            "first",
-            "last",
             "any",
+            "error",
             "all"
           ],
           "title": "On Multiple Match",
           "type": "string"
         },
-        "return_columns": {
+        "returns": {
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/ColumnMapping"
           },
-          "title": "Return Columns",
+          "title": "Returns",
           "type": "array"
         }
       },
       "required": [
-        "dataset_id",
         "condition_expression_id",
         "on_multiple_match",
-        "return_columns"
+        "returns"
       ],
       "title": "LookupOp",
       "type": "object"

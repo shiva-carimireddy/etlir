@@ -1,0 +1,5 @@
+{"DEPT_ID": "10", "EMP_COUNT": "1", "TOTAL_SALARY": "3000.00", "LAST_NAME": "alice"}
+{"DEPT_ID": "20", "EMP_COUNT": "2", "TOTAL_SALARY": "9500.50", "LAST_NAME": "gina"}
+{"DEPT_ID": null, "EMP_COUNT": "1", "TOTAL_SALARY": "2000.00", "LAST_NAME": "carol"}
+{"DEPT_ID": "30", "EMP_COUNT": "1", "TOTAL_SALARY": "1500.00", "LAST_NAME": "erin"}
+{"DEPT_ID": "99", "EMP_COUNT": "1", "TOTAL_SALARY": "900.00", "LAST_NAME": "frank"}

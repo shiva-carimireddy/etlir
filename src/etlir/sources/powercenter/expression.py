@@ -24,6 +24,7 @@ example ``NOT A = B``) is reported as ambiguous instead of being guessed.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -63,6 +64,11 @@ class Env:
     stateful: set[str] = field(default_factory=set)
     allow_aggregates: bool = False
     group_keys: set[str] | None = None
+    # Resolves an unconnected lookup call :LKP.name(args) to a column (see normalize).
+    lookup_call: (
+        Callable[[str, list[tuple[ExpressionNode, DataType]]], tuple[ExpressionNode, DataType]]
+        | None
+    ) = None
 
     def lookup(self) -> dict[str, str]:
         index: dict[str, str] = {}
@@ -207,10 +213,20 @@ class _Parser:
         if kind == "builtin":
             raise Opaque(f"built-in variable {val} is not supported")
         if kind == "external":
-            raise Opaque(
-                f"{val[1:-1]} call (unconnected lookup, stored procedure or mapplet) "
-                "is not supported"
-            )
+            if val.upper() != ":LKP.":
+                raise Opaque(f"{val[1:-1]} call (stored procedure or mapplet) is not supported")
+            k2, name = self.take()
+            if k2 != "id":
+                raise Opaque("malformed :LKP call")
+            self.expect("(")
+            call_args: list[Ast] = []
+            if not self.is_op(")"):
+                call_args.append(self.or_())
+                while self.is_op(","):
+                    self.take()
+                    call_args.append(self.or_())
+            self.expect(")")
+            return ("lkp", name, call_args)
         if kind == "op" and val == "(":
             inner = self.or_()
             self.expect(")")
@@ -323,6 +339,10 @@ class _Converter:
             return self.binary(a[1], a[2], a[3])
         if tag == "call":
             return self.function(a[1], a[2])
+        if tag == "lkp":
+            if self.env.lookup_call is None or self.in_agg:
+                raise Opaque("unconnected lookup call is not supported here")
+            return self.env.lookup_call(a[1], [self.conv(x) for x in a[2]])
         raise Opaque(f"unsupported syntax {tag}")
 
     def number(self, text: str) -> Typed:

@@ -165,14 +165,15 @@ def test_every_entity_is_traced_to_the_source(orders_doc) -> None:  # type: igno
 
 def test_unsupported_constructs_are_kept_with_reasons(mixed_doc) -> None:  # type: ignore[no-untyped-def]
     unsupported = {
-        o.id.split(":")[-1]: o.spec.reason
+        (df.name, o.id.split(":")[-1]): o.spec.reason
         for df in mixed_doc.dataflows
         for o in df.operations
         if o.spec.kind == "unsupported"
     }
-    assert "Lookup Procedure" in unsupported["LKP_REGION"]
-    assert "several upstream" in unsupported["EXP_REGION"]
-    assert "SQL overrides" in unsupported["SQ_CUSTOMERS"]
+    assert "'Sequence' is not supported" in unsupported[("s_m_CUSTOMER_KEYS", "SEQ_KEY")]
+    assert "unsupported upstream ['SEQ_KEY']" in unsupported[("s_m_CUSTOMER_KEYS", "CUSTOMER_KEYS")]
+    assert "SELECT * is not supported" in unsupported[("s_m_CUSTOMER_OVERRIDE", "SQ_CUSTOMERS")]
+    assert "not row-aligned" in unsupported[("s_m_NOT_ALIGNED", "EXP_MIX")]
     opaque = [
         e.ast.reason
         for df in mixed_doc.dataflows

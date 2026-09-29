@@ -141,6 +141,11 @@ class Expression(_Model):
 # ---------------------------------------------------------------------------- operations
 
 
+class ColumnMapping(_Model):
+    from_column: str
+    to_column: str
+
+
 class WriteMode(StrEnum):
     APPEND = "append"
     OVERWRITE = "overwrite"
@@ -228,11 +233,23 @@ class JoinOp(_Model):
 
 
 class LookupOp(_Model):
+    """For each row of slot ``in``, find the rows of slot ``lookup`` where the condition is
+    TRUE (NULL never matches) and return the mapped lookup columns.
+
+    Input columns pass through by name; ``returns`` maps lookup columns to output columns,
+    which are NULL when nothing matches. Column names of the two slots must be disjoint.
+    ``on_multiple_match``:
+
+    * ``any``: one matching row: the first when the lookup slot's columns are sorted
+      ascending in declared order with NULLs last (deterministic);
+    * ``error``: the task fails if any input row has more than one match;
+    * ``all``: one output row per match (not row-preserving).
+    """
+
     kind: Literal["lookup"] = "lookup"
-    dataset_id: Identifier
     condition_expression_id: Identifier
-    on_multiple_match: Literal["error", "first", "last", "any", "all"]
-    return_columns: list[str]
+    on_multiple_match: Literal["any", "error", "all"]
+    returns: list[ColumnMapping]
 
 
 class AggregateOp(_Model):
@@ -290,11 +307,6 @@ class Operation(_Model):
     spec: OperationSpec
     outputs: list[OutputGroup] = Field(default_factory=list)
     source: SourceRef
-
-
-class ColumnMapping(_Model):
-    from_column: str
-    to_column: str
 
 
 class DataEdge(_Model):

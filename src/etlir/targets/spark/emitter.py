@@ -39,8 +39,19 @@ RUNTIME_MODULE = "etlir_spark_runtime"
 _SUPPORTED = [
     *(
         f"operation.{k}"
-        for k in ("read", "write", "project", "derive", "filter", "route", "join", "aggregate")
+        for k in (
+            "read",
+            "write",
+            "project",
+            "derive",
+            "filter",
+            "route",
+            "join",
+            "aggregate",
+            "lookup",
+        )
     ),
+    *(f"lookup.{p}" for p in ("any", "error", "all")),
     *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists")),
     "task.dataflow",
     *(f"dependency.{c}" for c in ("success", "failure", "completion")),
@@ -352,7 +363,11 @@ class _Job:
                 (
                     _cast(f"rt.col({c.name!r})", c.type, in_types.get(c.name))
                     if c.name in present
-                    else f"F.lit(None).cast({spark_type(c.type)!r})"
+                    else (
+                        f"F.lit(None).cast({spark_type(c.type)!r})"
+                        if spark_type(c.type)
+                        else "F.lit(None)"
+                    )
                 )
                 + f".alias({c.name!r})"
                 for c in ds.columns
@@ -360,6 +375,20 @@ class _Job:
             self.emit(
                 f"    rt.write(ctx, {ds.binding_id or ds.id!r}, "
                 f"{self.slot(ref)}.select({items}), {spec.mode.value!r})"
+            )
+            return
+        if s.kind == "lookup":
+            ref_in, ref_lk = s.inputs["in"], s.inputs["lookup"]
+            lk_types = {c.name: c.type for c in ref_lk.columns}
+            ret_src = {m.to_column: f"rt.col({m.from_column!r})" for m in spec.returns}
+            ret_types = {m.to_column: lk_types[m.from_column] for m in spec.returns}
+            order = [c.name for c in ref_lk.columns]
+            cond = exprs[spec.condition_expression_id]
+            self.emit(
+                f"    {self.var(s.output_relation())} = rt.lookup({self.slot(ref_in)}, "
+                f"{self.slot(ref_lk)}, {cond}, {spec.on_multiple_match!r}, {order!r}, "
+                f"{s.op_id.split(':')[-1]!r})"
+                f".select({outcols(s.outputs[0].columns, ret_src, ret_types)})"
             )
             return
         if s.kind == "join":

@@ -11,6 +11,17 @@ First release: PowerCenter XML → Canonical IR → Spark and DuckDB, end to end
 documented subset. Canonical IR 0.1.0.
 
 ### Added
+- **Lookups**: canonical `lookup` operation (slots `in`/`lookup`; policies `any`, `error`,
+  `all`) lowered by both emitters; PowerCenter connected lookups (flat file or relational,
+  equality or range conditions, SQL overrides and source filters) and unconnected lookup
+  calls (`:LKP.name(args)`).
+- **SQL overrides** via SQLGlot: source-qualifier queries, source filters, user-defined
+  joins, SELECT DISTINCT, Oracle `(+)` joins, GROUP BY aggregates, `$$` parameters.
+- **Row-aligned merge fusion** (`etlir.canonical.rowalign`).
+- Mapping variables that the mapping never modifies become run parameters.
+- Global aggregates (no group keys); string→decimal casts for SQL parameter substitution.
+- Benchmark: case parameters, expected execution outcomes, a lookup-policy mutation, and
+  mutations that change no emitted code reported as not applicable. Four new cases.
 - **Canonical IR 0.1.0**: typed model and JSON Schema; invariants `IR-V-001`…`IR-V-017`
   (including column resolution); function catalog with NULL semantics; type inference;
   documented semantics (`docs/semantics.md`).
@@ -32,7 +43,7 @@ documented subset. Canonical IR 0.1.0.
   mutation analysis, **HTML report**.
 - CLI: `inspect`, `convert`, `validate`, `run`, `compare`, `report`, `benchmark`,
   `capabilities`, `plugins`, `schema`, `version`.
-- Three original synthetic benchmark cases with hand-authored expectations; a pinned
+- Seven original synthetic benchmark cases with hand-authored expectations; a pinned
   public corpus manifest with a fetch/verify script.
 - Apache-2.0 license, DCO contribution model, governance, security policy, citation
   metadata, ADRs 0001–0007.
