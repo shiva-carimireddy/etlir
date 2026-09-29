@@ -27,6 +27,7 @@ from etlir.canonical.model import (
     FilterOp,
     LiteralNode,
     Operation,
+    OutputGroup,
     Pipeline,
     ReadOp,
     SourceRef,
@@ -96,6 +97,7 @@ class ToyAdapter(SourceAdapter):
         src_ds, tgt_ds = f"ds.{f['source']['name']}", f"ds.{f['target']}"
         fcol, fval = f["filter"]["column"], f["filter"]["equals"]
         ((out_col, (fn, left, right)),) = f["derive"].items()
+        derived = [*cols, Column(name=out_col, type=DataType(kind=TypeKind.DECIMAL))]
         return CanonicalDocument(
             datasets=[
                 Dataset(
@@ -110,6 +112,7 @@ class ToyAdapter(SourceAdapter):
                     id=tgt_ds,
                     name=f["target"],
                     kind=DatasetKind.FILE,
+                    columns=derived,
                     format="csv",
                     source=ref("/target", "toy.dataset"),
                 ),
@@ -149,6 +152,7 @@ class ToyAdapter(SourceAdapter):
                         Operation(
                             id=f"op.{name}.filter",
                             spec=FilterOp(predicate_expression_id=f"ex.{name}.filter"),
+                            outputs=[OutputGroup(columns=cols)],
                             source=ref("/filter", "toy.filter"),
                         ),
                         Operation(
@@ -158,6 +162,7 @@ class ToyAdapter(SourceAdapter):
                                     Assignment(column=out_col, expression_id=f"ex.{name}.derive")
                                 ]
                             ),
+                            outputs=[OutputGroup(columns=derived)],
                             source=ref("/derive", "toy.derive"),
                         ),
                         Operation(
@@ -227,6 +232,7 @@ class PlanOnlyEmitter(TargetEmitter):
                     "operation.filter",
                     "operation.derive",
                     "operation.write",
+                    "write.append",
                     "task.dataflow",
                     "dependency.success",
                     "function.eq",

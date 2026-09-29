@@ -78,6 +78,12 @@ def test_import_boundaries(path: Path) -> None:
         assert me == other, f"plugin {me[1]} imports sibling plugin {imported}"
 
 
+@pytest.mark.parametrize("path", sorted(PKG.rglob("etlir_*_runtime.py")), ids=lambda p: p.name)
+def test_generated_runtime_depends_on_no_etlir_module(path: Path) -> None:
+    """Runtime helpers ship inside generated packages, which must run without ETLIR."""
+    assert not [m for m in _imports(path) if m == "etlir" or m.startswith("etlir.")]
+
+
 def test_canonical_schema_is_vendor_neutral() -> None:
     text = json.dumps(canonical_schema()).lower()
     hits = [t for t in FORBIDDEN_CANONICAL_TERMS if t in text]

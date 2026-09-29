@@ -10,12 +10,13 @@ construct in its dataflow is blocked, or if any upstream task it depends on is b
 
 from __future__ import annotations
 
-from enum import Enum
+from collections.abc import Mapping
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from etlir.canonical.invariants import walk_expression
-from etlir.canonical.model import CallNode, CanonicalDocument, OpaqueNode, SourceRef
+from etlir.canonical.model import CallNode, CanonicalDocument, CastNode, OpaqueNode, SourceRef
 from etlir.evidence import Diagnostic, Severity
 
 
@@ -23,7 +24,7 @@ class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class CapabilityState(str, Enum):
+class CapabilityState(StrEnum):
     SUPPORTED = "supported"
     CONSTRAINED = "constrained"
     APPROXIMATED = "approximated"
@@ -32,8 +33,9 @@ class CapabilityState(str, Enum):
 
 class CapabilityRule(_Model):
     construct_id: str = Field(
-        description="Construct key: 'operation.<kind>', 'task.<kind>', "
-        "'dependency.<condition>', 'function.<name>' or 'expression.opaque'."
+        description="Construct key: 'operation.<kind>', 'write.<mode>', 'task.<kind>', "
+        "'dependency.<condition>', 'trigger.any', 'function.<name>', 'cast.<type>' or "
+        "'expression.opaque'."
     )
     state: CapabilityState
     preconditions: list[str] = Field(
@@ -65,6 +67,7 @@ class Decision(_Model):
 class CapabilityReport(_Model):
     target: str
     decisions: list[Decision]
+    blocked_dataflow_ids: list[str]
     blocked_task_ids: list[str]
     diagnostics: list[Diagnostic]
 
@@ -74,45 +77,67 @@ def _state(manifest: CapabilityManifest, construct: str) -> CapabilityState:
     return rule.state if rule is not None else CapabilityState.BLOCKED
 
 
-def analyze(doc: CanonicalDocument, manifest: CapabilityManifest) -> CapabilityReport:
+def constructs_of_expression(node: object) -> list[str]:
+    out: list[str] = []
+    for n in walk_expression(node):  # type: ignore[arg-type]
+        if isinstance(n, CallNode):
+            out.append(f"function.{n.function}")
+        elif isinstance(n, CastNode):
+            out.append(f"cast.{n.to.kind.value}")
+        elif isinstance(n, OpaqueNode):
+            out.append("expression.opaque")
+    return list(dict.fromkeys(out))
+
+
+def analyze(
+    doc: CanonicalDocument,
+    manifest: CapabilityManifest,
+    extra_blocked: Mapping[str, list[str]] | None = None,
+) -> CapabilityReport:
+    """Decide every construct against ``manifest``.
+
+    ``extra_blocked`` maps dataflow ids to reasons found by an emitter's own preflight
+    (for example, unknown column types); those dataflows and their tasks are blocked too.
+    """
     decisions: list[Decision] = []
+    seen: set[tuple[str, str]] = set()
 
     def decide(subject: str, construct: str, source: SourceRef) -> CapabilityState:
         state = _state(manifest, construct)
-        decisions.append(
-            Decision(subject_id=subject, construct_id=construct, state=state, source=source)
-        )
+        if (subject, construct) not in seen:
+            seen.add((subject, construct))
+            decisions.append(
+                Decision(subject_id=subject, construct_id=construct, state=state, source=source)
+            )
         return state
 
-    blocked_dataflows: set[str] = set()
+    blocked_dataflows: set[str] = set(extra_blocked or {})
     for df in doc.dataflows:
         for op in df.operations:
-            if decide(op.id, f"operation.{op.spec.kind}", op.source) is CapabilityState.BLOCKED:
-                blocked_dataflows.add(df.id)
+            constructs = [f"operation.{op.spec.kind}"]
+            if op.spec.kind == "write":
+                constructs.append(f"write.{op.spec.mode.value}")
+            for c in constructs:
+                if decide(op.id, c, op.source) is CapabilityState.BLOCKED:
+                    blocked_dataflows.add(df.id)
         for expr in df.expressions:
-            for node in walk_expression(expr.ast):
-                construct = (
-                    f"function.{node.function}"
-                    if isinstance(node, CallNode)
-                    else "expression.opaque"
-                    if isinstance(node, OpaqueNode)
-                    else None
-                )
-                if construct and decide(expr.id, construct, expr.source) is CapabilityState.BLOCKED:
+            for c in constructs_of_expression(expr.ast):
+                if decide(expr.id, c, expr.source) is CapabilityState.BLOCKED:
                     blocked_dataflows.add(df.id)
 
     blocked_tasks: list[str] = []
     for pipeline in doc.pipelines:
         blocked: set[str] = set()
         for task in pipeline.tasks:
-            if decide(task.id, f"task.{task.kind.value}", task.source) is CapabilityState.BLOCKED:
-                blocked.add(task.id)
+            constructs = [f"task.{task.kind.value}"]
+            constructs += [f"dependency.{d.condition.value}" for d in task.depends_on]
+            if task.trigger == "any":
+                constructs.append("trigger.any")
+            for c in constructs:
+                if decide(task.id, c, task.source) is CapabilityState.BLOCKED:
+                    blocked.add(task.id)
             if task.dataflow_id in blocked_dataflows:
                 blocked.add(task.id)
-            for dep in task.depends_on:
-                construct = f"dependency.{dep.condition.value}"
-                if decide(task.id, construct, task.source) is CapabilityState.BLOCKED:
-                    blocked.add(task.id)
         # Propagate to every downstream task until a fixed point is reached.
         changed = True
         while changed:
@@ -144,9 +169,22 @@ def analyze(doc: CanonicalDocument, manifest: CapabilityManifest) -> CapabilityR
         for d in decisions
         if d.state is CapabilityState.APPROXIMATED
     ]
+    for df_id, reasons in sorted((extra_blocked or {}).items()):
+        df_src = next((d.source for d in doc.dataflows if d.id == df_id), None)
+        for reason in reasons:
+            diagnostics.append(
+                Diagnostic(
+                    code="CAP-B-002",
+                    severity=Severity.ERROR,
+                    message=f"Preflight for target '{manifest.target}': {reason}",
+                    subject_id=df_id,
+                    source=df_src,
+                )
+            )
     return CapabilityReport(
         target=manifest.target,
         decisions=decisions,
+        blocked_dataflow_ids=sorted(blocked_dataflows),
         blocked_task_ids=blocked_tasks,
         diagnostics=diagnostics,
     )

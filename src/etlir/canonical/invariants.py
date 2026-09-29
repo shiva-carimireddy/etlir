@@ -11,10 +11,15 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 
+from etlir.canonical.functions import CATALOG, arity_ok
+from etlir.canonical.graph import output_columns, slot_columns, slot_inputs
 from etlir.canonical.model import (
     CallNode,
     CanonicalDocument,
+    CastNode,
+    ColumnRefNode,
     Dataflow,
+    Dataset,
     DependencyCondition,
     ExpressionNode,
     OpaqueNode,
@@ -38,6 +43,11 @@ CODES: dict[str, str] = {
     "IR-V-010": "Unsupported operation is present.",
     "IR-V-011": "Unsupported task is present.",
     "IR-V-012": "Expression is opaque (not parsed into the supported grammar).",
+    "IR-V-013": "Input slot is fed by more than one upstream output.",
+    "IR-V-014": "Function is not in the canonical catalog, has wrong arity, or is misplaced.",
+    "IR-V-015": "Column does not resolve.",
+    "IR-V-016": "Join inputs are missing or have overlapping column names.",
+    "IR-V-017": "Operation does not declare its output columns.",
 }
 
 
@@ -59,6 +69,8 @@ def walk_expression(node: ExpressionNode) -> Iterator[ExpressionNode]:
     if isinstance(node, CallNode):
         for arg in node.args:
             yield from walk_expression(arg)
+    elif isinstance(node, CastNode):
+        yield from walk_expression(node.arg)
 
 
 def _find_cycle(nodes: Iterable[str], edges: Iterable[tuple[str, str]]) -> list[str]:
@@ -133,8 +145,10 @@ def validate(doc: CanonicalDocument) -> list[Diagnostic]:
     for pipeline in doc.pipelines:
         out.extend(_validate_pipeline(pipeline, dataflow_ids, parameter_ids))
 
+    datasets = {d.id: d for d in doc.datasets}
     for df in doc.dataflows:
         out.extend(_validate_dataflow(df, dataset_ids, parameter_ids))
+        out.extend(_validate_columns(df, datasets))
 
     for edge in doc.lineage:
         if edge.dataflow_id not in dataflow_ids:
@@ -156,6 +170,15 @@ def _check_expression_params(
             if isinstance(node, ParameterRefNode) and node.parameter_id not in parameter_ids:
                 out.append(
                     _diag("IR-V-002", f"Unknown parameter '{node.parameter_id}'.", expr_id, src)
+                )
+            elif isinstance(node, CallNode) and not arity_ok(node.function, len(node.args)):
+                out.append(
+                    _diag(
+                        "IR-V-014",
+                        f"Unknown function or wrong arity: {node.function}/{len(node.args)}.",
+                        expr_id,
+                        src,
+                    )
                 )
             elif isinstance(node, OpaqueNode):
                 out.append(
@@ -281,4 +304,107 @@ def _validate_dataflow(
     cycle = _find_cycle(ops, edges)
     if cycle:
         out.append(_diag("IR-V-004", f"Cycle among operations {sorted(cycle)}.", df.id, df.source))
+    return out
+
+
+def _expression_columns(ast: ExpressionNode) -> set[str]:
+    return {n.name for n in walk_expression(ast) if isinstance(n, ColumnRefNode)}
+
+
+def _has_aggregate(ast: ExpressionNode) -> bool:
+    return any(
+        isinstance(n, CallNode) and n.function in CATALOG and CATALOG[n.function].aggregate
+        for n in walk_expression(ast)
+    )
+
+
+def _validate_columns(df: Dataflow, datasets: dict[str, Dataset]) -> list[Diagnostic]:
+    """Column-level resolution: edges, expressions, pass-through outputs, and writes."""
+    out: list[Diagnostic] = []
+    ops = {o.id: o for o in df.operations}
+    exprs = {e.id: e for e in df.expressions}
+
+    for op in df.operations:
+        slots = slot_inputs(df, op.id)
+        for slot, ups in slots.items():
+            if len(ups) > 1:
+                out.append(
+                    _diag("IR-V-013", f"Slot '{slot}' has {len(ups)} upstreams.", op.id, op.source)
+                )
+            for up in ups:
+                upstream = ops.get(up.from_operation)
+                if upstream is None:
+                    continue
+                known = {c.name for c in output_columns(upstream, up.from_group, datasets)}
+                for m in up.mappings:
+                    if known and m.from_column not in known:
+                        out.append(
+                            _diag(
+                                "IR-V-015",
+                                f"'{up.from_operation}' has no column '{m.from_column}'.",
+                                op.id,
+                                op.source,
+                            )
+                        )
+
+        spec = op.spec
+        if spec.kind in ("read", "unsupported"):
+            continue
+        if spec.kind != "write" and not op.outputs:
+            out.append(_diag("IR-V-017", "No output groups declared.", op.id, op.source))
+        cols = slot_columns(df, op.id, datasets)
+        if spec.kind == "join":
+            left, right = cols.get("left"), cols.get("right")
+            overlap = {c.name for c in left} & {c.name for c in right} if left and right else set()
+            if left is None or right is None or overlap:
+                out.append(
+                    _diag(
+                        "IR-V-016",
+                        "Join needs disjoint 'left' and 'right' inputs "
+                        f"(overlap {sorted(overlap)}).",
+                        op.id,
+                        op.source,
+                    )
+                )
+        visible = {c.name for group in cols.values() for c in group}
+
+        expr_ids: list[str] = []
+        for attr in ("predicate_expression_id", "condition_expression_id"):
+            value = getattr(spec, attr, None)
+            if value is not None:
+                expr_ids.append(value)
+        expr_ids += [a.expression_id for a in getattr(spec, "assignments", [])]
+        expr_ids += [a.expression_id for a in getattr(spec, "aggregations", [])]
+        expr_ids += [g.predicate_expression_id for g in getattr(spec, "groups", [])]
+        for ex_id in expr_ids:
+            ex = exprs.get(ex_id)
+            if ex is None:
+                continue
+            for name in sorted(_expression_columns(ex.ast) - visible):
+                out.append(_diag("IR-V-015", f"Unknown input column '{name}'.", ex.id, ex.source))
+            if _has_aggregate(ex.ast) and spec.kind != "aggregate":
+                out.append(
+                    _diag("IR-V-014", "Aggregate function outside an aggregate.", ex.id, ex.source)
+                )
+
+        if spec.kind == "derive":
+            assigned = {a.column for a in spec.assignments}
+            for group in op.outputs:
+                for c in group.columns:
+                    if c.name not in assigned and c.name not in visible:
+                        out.append(
+                            _diag("IR-V-015", f"Output '{c.name}' has no source.", op.id, op.source)
+                        )
+        elif spec.kind == "project":
+            for name in spec.columns:
+                if name not in visible:
+                    out.append(_diag("IR-V-015", f"Unknown column '{name}'.", op.id, op.source))
+        elif spec.kind == "aggregate":
+            for name in spec.group_by:
+                if name not in visible:
+                    out.append(_diag("IR-V-015", f"Unknown group key '{name}'.", op.id, op.source))
+        elif spec.kind == "write" and spec.dataset_id in datasets:
+            target = {c.name for c in datasets[spec.dataset_id].columns}
+            for name in sorted(visible - target):
+                out.append(_diag("IR-V-015", f"Dataset has no column '{name}'.", op.id, op.source))
     return out

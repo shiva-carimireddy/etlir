@@ -2,73 +2,77 @@
 
 ## Stages and artifacts
 
-An **ETLIR translation pipeline** is one staged run of the following. Each stage writes a
-deterministic artifact so it can be inspected, diffed and reproduced.
+`etlir convert` runs one **ETLIR translation pipeline** and writes every stage:
 
 | Stage | Owner | Artifact |
 |---|---|---|
-| Inventory | Source adapter | `inventory.json`: counts with explicit units |
+| Inventory | Source adapter | `inventory.json`: counts with explicit units, reference resolution |
 | Load | Source adapter | `raw_ir.json`: source-preserving Raw IR, input digests, omissions |
-| Normalize | Source adapter | `canonical_ir.json` plus provenance evidence |
-| Validate | Core | `validation.json`: invariant diagnostics (`IR-V-*`) |
-| Analyze capabilities | Core + emitter manifest | capability decisions, blocked tasks (`CAP-*`) |
-| Plan / write | Target emitter | `target/…`: target plan and package |
-| Execute / compare | Target runner + core comparator | `execution.json`, `comparison.json` |
+| Normalize | Source adapter | `canonical_ir.json`; provenance in `evidence.json` |
+| Validate | Core | `validation.json`: adapter + invariant diagnostics |
+| Analyze + emit | Core + each emitter | `targets/<t>/`: target plan, workflow plan, code |
+| Summarize | Core | `summary.json`, `report.html`, `run_manifest.json` |
+| Execute | Core runner | `execution.json`, logs, outputs |
+| Compare | Core comparator | `comparison.json` |
 
-## Boundaries (enforced by tests)
+## Modules and boundaries (enforced by tests)
 
 ```
-etlir.canonical, etlir.evidence, etlir.capabilities,
-etlir.contracts, etlir.registry, etlir.serialization    <- core: imports no plugin
-etlir.sources.<name>   -> core only (no targets, no sibling sources)
-etlir.targets.<name>   -> core only (no sources, no sibling targets)
+core (imports no plugin)
+  etlir.canonical      model, invariants, functions catalog, typing, graph, plan
+  etlir.capabilities   manifests, fail-closed analysis
+  etlir.contracts      SourceAdapter / TargetEmitter interfaces
+  etlir.registry       entry-point discovery, IR-version gating
+  etlir.workflow       target-neutral workflow plan
+  etlir.package        target package writer + target evidence
+  etlir.runner         reference workflow runner
+  etlir.compare        output comparator
+  etlir.pipeline       convert orchestration; etlir.benchmark, etlir.report, etlir.cli
+  etlir.testing        conformance kit
+plugins
+  etlir.sources.powercenter   -> core only
+  etlir.targets.spark         -> core only
+  etlir.targets.duckdb        -> core only
+generated runtime helpers (etlir_*_runtime.py) -> no etlir import at all
 ```
 
-A target emitter receives a `CanonicalDocument`. It never sees source files or Raw IR.
-Target-specific concerns (lowering choices, runtime settings) live in the **target
-plan**, never in the Canonical IR.
+A target emitter receives a `CanonicalDocument` only. Target-specific choices live in the
+target plan, never in the Canonical IR. The schema is checked for product vocabulary.
 
 ## Canonical IR (0.1.0)
 
 Two separate graphs:
 
-* **Workflow graph:** `Pipeline` → `Task`s with typed `Dependency` edges
-  (`success`, `failure`, `completion`, `expression`). A `dataflow` task references one
-  `Dataflow`.
-* **Dataflow graph:** `Dataflow` → `Operation`s connected by `DataEdge`s. Edges carry an
-  output group (for routing) and an input slot (for joins), plus optional column maps.
+* **Workflow graph:** `Pipeline` → `Task`s with typed `Dependency` edges. A `dataflow`
+  task references one `Dataflow`.
+* **Dataflow graph:** `Operation`s connected by `DataEdge`s (output group → input slot,
+  with column renames).
 
-Other entities: `Dataset`, `Expression` (typed AST: literal, column, parameter, call,
-opaque), `Parameter`, `Binding` (runtime references, never secrets), and `LineageEdge`
-(column-level data lineage, distinct from provenance).
+Entities also include `Dataset`, `Expression` (typed AST), `Parameter`, `Binding`
+(runtime reference, never a secret) and `LineageEdge`. Semantics are defined in
+[semantics.md](semantics.md).
 
-**Invariants** (in addition to the JSON Schema):
-
-1. Every entity has a `SourceRef` (adapter, artifact, locator, native id, rule).
-2. Identifiers are unique across the document (`IR-V-001`).
-3. All references resolve (`IR-V-002`).
-4. Both graphs are acyclic (`IR-V-003`, `IR-V-004`).
-5. Reads have no inputs; writes have no outputs (`IR-V-007`).
-6. Sensitive parameters have no defaults (`IR-V-009`).
-7. Unsupported operations, unsupported tasks, and opaque expressions are kept and reported
-   (`IR-V-010`…`IR-V-012`). They are never dropped.
-
-The canonical function catalog (names used by `CallNode.function`) will be documented
-with typed signatures and null/decimal/time semantics as functions are added. A function
-not in the catalog must be represented as `opaque`.
+**Invariants** (`IR-V-001`…`IR-V-017`): every entity has a source trace; identifiers are
+unique; references resolve; both graphs are acyclic; reads have no inputs and writes no
+outputs; sensitive parameters have no defaults; functions exist in the catalog with the
+right arity, and aggregates appear only in aggregations; every column resolves; join
+inputs are disjoint; operations declare their outputs; each input slot has one upstream.
+Unsupported operations, unsupported tasks and opaque expressions are kept and reported.
 
 ## Capability analysis
 
-Each emitter publishes a `CapabilityManifest` mapping construct ids
-(`operation.filter`, `task.command`, `dependency.failure`, `function.substr`,
-`expression.opaque`, …) to `supported`, `constrained`, `approximated`, or `blocked`.
-Undeclared constructs are blocked. A task is blocked if its kind, any construct in its
-dataflow, or any upstream dependency is blocked. Emitters check the preconditions of
-`constrained` rules in their own preflight step.
+Each emitter publishes a manifest mapping construct ids (`operation.join`,
+`write.overwrite`, `task.command`, `dependency.failure`, `trigger.any`,
+`function.substr`, `cast.integer`, `expression.opaque`, …) to `supported`,
+`constrained`, `approximated` or `blocked`. Undeclared constructs are blocked. An emitter's
+own preflight (for example, unknown column types) can block further dataflows. A task is
+blocked if its kind, a dependency condition, anything in its dataflow, or any upstream task
+is blocked.
 
 ## Evidence
 
-`EvidenceRecord`s link a subject to its source reference, the rule applied, a status
-(`PRESERVED`, `TRANSFORMED_EQUIVALENT`, `APPROXIMATED`, `AMBIGUOUS`, `UNSUPPORTED`,
-`MISSING_INFORMATION`, `BLOCKED`), and target artifact locations. Evidence documents
-decisions. It does not prove behavioral equivalence.
+`evidence.json` holds source evidence (per canonical entity: status, rule, source
+reference) and target evidence (per emitted job and operation: file and line). Statuses:
+`PRESERVED`, `TRANSFORMED_EQUIVALENT`, `APPROXIMATED`, `AMBIGUOUS`, `UNSUPPORTED`,
+`MISSING_INFORMATION`, `BLOCKED`. Evidence documents decisions. It does not prove
+behavioral equivalence.

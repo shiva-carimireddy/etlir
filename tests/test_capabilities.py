@@ -19,7 +19,13 @@ def test_undeclared_construct_is_blocked(toy_doc: CanonicalDocument) -> None:
     report = analyze(toy_doc, manifest("operation.read", "operation.write", "task.dataflow"))
     assert report.blocked_task_ids == ["t.orders"]
     blocked = {d.construct_id for d in report.decisions if d.state is CapabilityState.BLOCKED}
-    assert blocked == {"operation.filter", "operation.derive", "function.eq", "function.subtract"}
+    assert blocked == {
+        "operation.filter",
+        "operation.derive",
+        "function.eq",
+        "function.subtract",
+        "write.append",
+    }
     assert all(d.code == "CAP-B-001" and d.source is not None for d in report.diagnostics)
 
 
@@ -56,6 +62,7 @@ def test_full_support_blocks_nothing(toy_doc: CanonicalDocument) -> None:
             "operation.filter",
             "operation.derive",
             "operation.write",
+            "write.append",
             "task.dataflow",
             "function.eq",
             "function.subtract",

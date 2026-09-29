@@ -9,7 +9,7 @@ description = "Source- and target-decoupled ETL modernization framework built on
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Shiva Kumar Reddy Carimireddy", email = "shivacarimireddy@ieee.org" }]
 keywords = [
   "etl",
@@ -21,12 +21,15 @@ keywords = [
   "spark",
 ]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Database",
   "Topic :: Software Development :: Code Generators",
   "Topic :: Software Development :: Compilers",
@@ -39,19 +42,27 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+spark = ["pyspark>=4.0,<5"]
+duckdb = ["duckdb>=1.1,<2"]
 dev = [
   "pytest>=8",
   "ruff>=0.6",
   "mypy>=1.10",
+  "types-defusedxml",
+  "duckdb>=1.1,<2",
 ]
 
 [project.scripts]
 etlir = "etlir.cli:main"
 
-# Plugin discovery. In-tree and third-party packages register here; see docs/extending.md.
-# Adapters and emitters are added to these tables as they are implemented.
-# [project.entry-points."etlir.sources"]
-# [project.entry-points."etlir.targets"]
+# Plugin discovery. In-tree and third-party packages register the same way; see
+# docs/extending.md.
+[project.entry-points."etlir.sources"]
+powercenter-xml = "etlir.sources.powercenter:PowerCenterAdapter"
+
+[project.entry-points."etlir.targets"]
+spark = "etlir.targets.spark:SparkEmitter"
+duckdb = "etlir.targets.duckdb:DuckDBEmitter"
 
 [project.urls]
 Homepage = "https://github.com/shiva-carimireddy/etlir"
@@ -66,7 +77,7 @@ path = "src/etlir/__init__.py"
 packages = ["src/etlir"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/", "schemas/", "tests/", "docs/", "LICENSE", "NOTICE", "README.md", "CITATION.cff", "CHANGELOG.md"]
+include = ["src/", "schemas/", "tests/", "docs/", "benchmarks/cases/", "benchmarks/corpus.toml", "benchmarks/protocol.md", "scripts/", "LICENSE", "NOTICE", "README.md", "CITATION.cff", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -77,7 +88,7 @@ markers = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -86,10 +97,19 @@ ignore = ["S101"]  # assert is idiomatic in pytest
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S"]
+# SQL code generator: identifiers are quoted with q(), literals escaped with lit(); source
+# text is never interpolated (expressions are lowered from the typed Canonical IR AST).
+"src/etlir/targets/duckdb/*.py" = ["S608"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 packages = ["etlir"]
 mypy_path = "src"
 plugins = ["pydantic.mypy"]
+# Runtime helpers are copied into generated packages and run against PySpark/DuckDB.
+exclude = ["etlir_spark_runtime\\.py$", "etlir_duckdb_runtime\\.py$"]
+
+[[tool.mypy.overrides]]
+module = ["pyspark.*", "duckdb.*"]
+ignore_missing_imports = true

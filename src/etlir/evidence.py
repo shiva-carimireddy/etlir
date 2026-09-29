@@ -7,7 +7,7 @@ source and target behave identically.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,13 +18,13 @@ class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
 
 
-class EvidenceStatus(str, Enum):
+class EvidenceStatus(StrEnum):
     PRESERVED = "PRESERVED"
     TRANSFORMED_EQUIVALENT = "TRANSFORMED_EQUIVALENT"
     APPROXIMATED = "APPROXIMATED"
