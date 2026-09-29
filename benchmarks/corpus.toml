@@ -1,0 +1,186 @@
+# Public PowerCenter XML evaluation corpus (pinned; not redistributed by ETLIR).
+#
+# Fetch and verify locally:   python scripts/fetch_corpus.py
+#
+# Upstream URLs and commits were verified by cloning on 2026-09-28. License status is the
+# presence of a LICENSE file at the pinned commit. Files from groups with
+# license = "none-found" may be used for local research by authorized users only; they are
+# never copied into this repository or its releases.
+#
+# observed_scope counts come from the 2026-09-23 manual inspection and are kept for
+# reference only. ETLIR-derived counts come from `etlir inspect` / `etlir convert`.
+#
+# Eligibility partitions (see protocol.md): inventory-only, structurally-resolvable,
+# emit-capable, locally-executable, behaviorally-comparable. Public exports lack source
+# data, so none of these groups is locally executable as-is.
+schema_version = 1
+status = "pinned, protocol not frozen"
+
+[[group]]
+id = "hhs-informatica"
+upstream = "https://github.com/HHS/Informatica"
+commit = "3bf8cac1a604c5c4e0079b08014076587d9d6982"
+license = "Unlicense"
+redistribute = false  # permitted by license; not needed, and metadata review is pending
+provenance = "public historical export (archived repository)"
+purpose = "large coherent estate: connectors, parameters, mapplets, workflow commands"
+observed_scope = { mapping_elements = 108, session_elements = 108, workflow_elements = 11, exports = 11 }
+eligibility = "structurally-resolvable"
+files = [
+  { path = "Pseudossn", sha256 = "349b06773b5bc527dd4ca671cfc9b812b5095387f0cc22398bdeced7a0dd7b3d" },
+  { path = "XML/COMPTIME", sha256 = "b05c3e3f122d3a28dc0496a4fef1b3e58be0b0544f38b320172d9f4d3eff7d3a" },
+  { path = "XML/CPM", sha256 = "76c523b685f7393753c96478049eb0c70a682230fcd78bf6d17bc63d6515ce05" },
+  { path = "XML/CPM_AFPS", sha256 = "8f0f2fd28c60a5f999efa075f739c46df9e7b222e24111ddf98210fca856a5e5" },
+  { path = "XML/CPM_CDC", sha256 = "d29cc1ea1e8d3f14a14fef4c9da521701c8781453988a3b7fb3b343c27b724f6" },
+  { path = "XML/CPM_NIH", sha256 = "aead33b353192616fd53b94e072c6aa2eff6cf6f5c5c6d4f600d7152aae48003" },
+  { path = "XML/CPM_OIG", sha256 = "c063c697d9a80ef5cfc1e2b6fe694e4a5006381d62233cd8299e0ec157971d3f" },
+  { path = "XML/EHRP2BIIS_UPDATE", sha256 = "6f1739348349743e8d77ba5b59e111d93e482e148446bc3ecbc3f3de16e93607" },
+  { path = "XML/FDA_Leave", sha256 = "4dab41aab055b8e8f62692f7f357deeda3d1865691ef52670ec61a88454cf792" },
+  { path = "XML/LES", sha256 = "186fda61582afce2102b406506655d93cae165607fa86d8e14af7f846e71b2b2" },
+  { path = "XML/Pay_Calendar", sha256 = "a0895c4e03f15e293d983609964604a69b1b8dd66ee6f0a83c9cc3eb1e00d01b" },
+  { path = "XML/Pseudossn", sha256 = "349b06773b5bc527dd4ca671cfc9b812b5095387f0cc22398bdeced7a0dd7b3d" },
+]
+
+[[group]]
+id = "global-superstore-datamart"
+upstream = "https://github.com/mostafa-khairy/Building-Global_Superstore-Data-Mart"
+commit = "5ad49959f69000bd5b89db12d745ab5303fe7711"
+license = "none-found"
+redistribute = false
+provenance = "public project"
+purpose = "whole workflow with assignment task, audit, router and lookups"
+observed_scope = { mapping_elements = 6, session_elements = 6, workflow_elements = 1 }
+eligibility = "structurally-resolvable"
+files = [
+  { path = "WF_LOAD_DATA_MART.XML", sha256 = "fae89bee6913dbd44c1751c76fcb3253b1d74fdb35ceb5223ce53f4685c27c9b" },
+]
+
+[[group]]
+id = "enterprise-dwh-powercenter"
+upstream = "https://github.com/ahmedtaha89/EnterpriseDWH-InformaticaPowerCenter"
+commit = "8384d3e34da213c7234e369847ed3d519e6592d4"
+license = "none-found"
+redistribute = false
+provenance = "public project"
+purpose = "cross-file session-to-mapping resolution across 18 exports"
+observed_scope = { mapping_elements = 15, session_elements = 15, workflow_elements = 3, exports = 18 }
+eligibility = "structurally-resolvable"
+files = [
+  { path = "Bronze/m_Load_Bronze_CRM_Customers.XML", sha256 = "95b5cd6dd4057cbe67a213dc56b5ac4fdc02f1c8a829e9e77d640b80878a88a9" },
+  { path = "Bronze/m_Load_Bronze_CRM_Product.XML", sha256 = "2451b6f70979290ed8dc794313cc235f283c08ea998208eafe03e0d1e7d241c6" },
+  { path = "Bronze/m_Load_Bronze_CRM_Sales_Details.XML", sha256 = "5ceec95201a7c23d3a49ba9e53a6f8440e3d687a7fb46c71b5c8ac329fce4809" },
+  { path = "Bronze/m_Load_Bronze_ERP_Customers.XML", sha256 = "36a266135997409a7452f06fce87df80de9b217988879e8359ac83f2c09730a1" },
+  { path = "Bronze/m_Load_Bronze_ERP_Location.XML", sha256 = "a1c26182cea899e7e5197e09fcb99d4af209eca59b492566ac8d8ad324071907" },
+  { path = "Bronze/m_Load_Bronze_ERP_Product.XML", sha256 = "8f793ed615d9c665c1927d8c32699112152d8dc6432afd4aa9907fc0e347ae46" },
+  { path = "Gold/m_Load_Gold_Dim_Customers.XML", sha256 = "159b91c19516c2a8dd9182ebc09c2f20fe044aefabaf63efc322bfc790431e66" },
+  { path = "Gold/m_Load_Gold_Dim_Products.XML", sha256 = "9e50b7e19e1b893083c00c9dad8a6ec5da49bcd0c627a271680b9e354dd8ceda" },
+  { path = "Gold/m_Load_Gold_Fact_Sales.XML", sha256 = "96e84fd6b3fc76b0f1cea4930108d49cd04d12f83224c474277b50dcea0655c6" },
+  { path = "Silver/m_Load_Silver_CRM_Customers.XML", sha256 = "3bef1d9055fcb981381cde2fde5140ca3db2ea24da1c019ad53661ed0e36e2e5" },
+  { path = "Silver/m_Load_Silver_CRM_Product.XML", sha256 = "8e0d18ce9ef38384b94aeb8d6bae3f4abd90548cd30c4dcbe7cf76da7460604b" },
+  { path = "Silver/m_Load_Silver_CRM_Sales_Details.XML", sha256 = "b05883d98534ed5578d1c8f899f2d996e1daa454de4adec7b1040c6ec159e0ae" },
+  { path = "Silver/m_Load_Silver_ERP_Customers.XML", sha256 = "6114fa19144f0b7efb46cc98d0460537ae1232cd6bc05fbc8d4df8eb55968242" },
+  { path = "Silver/m_Load_Silver_ERP_Location.XML", sha256 = "d99b6afcfe97a31276c25db472d1e9a27c45daf103144c1b20cce4de552d95ba" },
+  { path = "Silver/m_Load_Silver_ERP_Products.XML", sha256 = "4ed7fa6a4a66ddaa119f91336d0719cc5c3fb7b9466f47e8b9ed5d0e1e781da7" },
+  { path = "Workflow Manager/wf_Bronze_Load_All.XML", sha256 = "8b41b7e75a743e6d1a418e200b847886004d3c8f6d5f28ccc5baceee21bf6b68" },
+  { path = "Workflow Manager/wf_Silver_Load_All.XML", sha256 = "62ff5b46d2ead09277ff7afd7b48c4c12fb90a546f58dea00729862212ebcf89" },
+  { path = "Workflow Manager/wk_Gold_Load_All.XML", sha256 = "7e054c7aaf4f7d4f4efc739b6903faae5ef3002505f5ad4996b7662442f4e5ff" },
+]
+
+[[group]]
+id = "powercenter-tasks"
+upstream = "https://github.com/ahmedtaha89/Informatica-PowerCenter-Tasks"
+commit = "bfebc7e25aa72fb00ed8173c9b8f9c3b293dd30e"
+license = "none-found"
+redistribute = false
+provenance = "public project"
+purpose = "single-transformation cases; deliberately incomplete references"
+observed_scope = { mapping_elements = 22, session_elements = 4, workflow_elements = 4, xml_files = 26 }
+eligibility = "structurally-resolvable"
+files = [
+  { path = "Aggregator/m_Courses_ITI_AGG_Task1.XML", sha256 = "a4935f481c7ee64528aaba763e855fc6262ff1b653a8c3baca7368c2f66c9c63" },
+  { path = "Filter/wkf_EMP_FF_FILTER.XML", sha256 = "2cbbb7f1600a8575791b9770252bc9a2080c20b8e462f3ba530545de58abd925" },
+  { path = "Joiner/m_Emp_Dept_Normal_Joiner_FF.XML", sha256 = "3a3257b0edc5cdd384f3e2c39c323a9ee91b0da085e80aec353cded1671fb686" },
+  { path = "Lookup Connected/m_EMP_DEPT_LKP_CONN.XML", sha256 = "dfcd3ff2e75290b2ac2d740d9642358b79d7002f529ebe9f687f56ee85c39de3" },
+  { path = "Lookup Unconnected/m_EMP_DEPT_LKP_UNCONN.XML", sha256 = "eb7164d2b43f07a74e3cee0c0a543bc7a87c73bffde1bc19746a7e930353a80b" },
+  { path = "Normalizer Transformation/m_nrm_sales.XML", sha256 = "23de43dea58b4f4ff9c9589093ed415ceb1c08f087955d5aae411e2422a367c6" },
+  { path = "Rank/m_EMP_Rnk.XML", sha256 = "79532a6d1b66801323c5b5669e06aaa06fdedae127c1387951dcc9dd026cc8c3" },
+  { path = "Router Task/m_EMP_FF_Router.XML", sha256 = "2cee366d853b86148c745e8b87bb57b966aee95dac006788284a3cb529ff59f7" },
+  { path = "Router Task/wkf_EMP_Router.XML", sha256 = "9fc646e7527f996928b0ef96ad9dfed4e39cd5c2b930239ee847abde6993585f" },
+  { path = "SCD Type1/Task 1/m_scd_type1.XML", sha256 = "2074bc017632ab382742eed882df9ca071592bb7cbbadd7f45ae0fe12a7a5b8f" },
+  { path = "SCD Type1/Task 1/m_STUDENT_SCD1.XML", sha256 = "a7e8c4ded68290e84ba739d37e66f4489f88f4746818f3f9e0bde894010c42e6" },
+  { path = "SCD Type1/Task2/m_STUDENT_SCD1.XML", sha256 = "63b43f2ddeffbed630c550469f82ac68a3e70043420673802ebe6f505cf3f517" },
+  { path = "SCD Type1/Task2/m_STUDENT_SCD2.XML", sha256 = "1229a5051f9f16274428ceb18153ca9052614fea8c6f59c859f9ec4ef924af32" },
+  { path = "SCD Type1/Task2/m_STUDENT_SCD_TYPE2_SQL.XML", sha256 = "b5333d5afb2650f6c7c491470b48943c12fbc662c00f0dbb308c7b46ef408bf7" },
+  { path = "SCD Type2/Task 1 SCD T2/m_STUDENT_SCD_TYPE2_SQL.XML", sha256 = "4a4d12dffff48abe4508743dcbfd5769f4b2b94ab875af0f829115db4adadc62" },
+  { path = "SCD Type2/Task 2 SCD T2/m_COMPANY_SD_EMPLOYEE_SCD2.XML", sha256 = "bbfdb81ae05d4bd37acef873737a381cacfeb4e75711f3d88965c423eadfe432" },
+  { path = "SCD Type3/m_EMP_BRANCH_SCD3.XML", sha256 = "323c5c17a42ea738236976bd9b8328d374a53b30c587a0eee8b7d33b8f54e67d" },
+  { path = "Sequence Number/wkf_EMP_SEQ_Num.XML", sha256 = "90d2b54a9257b1b48b2ace2fef9d4d5f2f4a0954c421918626b116618cd9f3f6" },
+  { path = "Sorter/m_EMP_Sorter_ASC.XML", sha256 = "ccc06a687c931133ad41951189f9979d1a5181f4555d5b49ec7cb8619ea78d5f" },
+  { path = "Sorter/wkf_EMP_FF_Sorter.XML", sha256 = "a46bc6811cd194d1b56a073c0382da151c6a7bb846b9241ac057c552c4c7315a" },
+  { path = "SQL Transformation/Query Mode/SQL_Query.XML", sha256 = "c04d4e84bfacde0d3219de6f5a90a94f15cde70103cf3a187095a50bf9013b4c" },
+  { path = "SQL Transformation/Script Mode/m_sql_transformation.XML", sha256 = "fd6f343b58cb49b48ce9f059173d3942c210dc33ac7e5756fb698b5fec6b6331" },
+  { path = "Transaction Control/m_tc_emp_dept20.XML", sha256 = "26b14ab3b12847bc1e028da11f2db378201542668b7a1f631306ad80e6707b69" },
+  { path = "Union&Router/m_UNION_DEPT_10_20_30_DEFAULT.XML", sha256 = "5d7ea899ce0c5cdd87b84e315bfd1faf4fbc91c26c7cf92ad683a8f17c7e9a41" },
+  { path = "Union&Router/m_union_emp.XML", sha256 = "349a282e96dbce9370fdea44d9644dbd24d87bbbdd8b07bf8add616682849771" },
+  { path = "Update Strategy/m_ups_emp.XML", sha256 = "6bf9ecf0780417afc460d9d27e06d876722f380b7153499d3f1990e14b57adb8" },
+]
+
+[[group]]
+id = "northwind-dwh"
+upstream = "https://github.com/Omaryahia3/Northwind-DWH-Informatica"
+commit = "b0e4e8e514c0d36faf0a325150c136e2a73635f5"
+license = "none-found"
+redistribute = false
+provenance = "public project"
+purpose = "mapping-only warehouse; stored procedure; no workflows (not a workflow failure)"
+observed_scope = { mapping_elements = 7, session_elements = 0, workflow_elements = 0 }
+eligibility = "structurally-resolvable"
+files = [
+  { path = "Mapping/CustomersDIM.XML", sha256 = "ec5c751981fe4d5a6855f7b64d06271f8b303ce5a195c2da704ffb4d89832c7d" },
+  { path = "Mapping/Date_Dim.XML", sha256 = "de2facd8cbe9e56e2063224704d4f4e8848cac2ce7b9e442f37ae9ed2d05f058" },
+  { path = "Mapping/Employees_DIM.XML", sha256 = "63546b4b5910ac77f844518e89a39716d418e14cf1e34ed93c6a60cfc20380b7" },
+  { path = "Mapping/Orders_Fact.XML", sha256 = "aeaeb11569d2206b482bfc10d4bb1790506609b8ff9ccd31006ec890a3d17581" },
+  { path = "Mapping/Products_DIM.XML", sha256 = "82e4f2827d17736679c732904f5f76560e21aa032053dcbf6c5bca13bcff861e" },
+  { path = "Mapping/Shippers_DIM.XML", sha256 = "fa484eda9ae9ff33edd74e5adbd09b71fd6d6ad470eeb60ae25e67015f0d6bd1" },
+  { path = "Mapping/Suppliers_DIM.XML", sha256 = "e3434514b059591a781c9ab352134ad9e45379106fb7b2dc6ae1013e91ecafbf" },
+]
+
+[[group]]
+id = "mario-deno-informatica"
+upstream = "https://github.com/mario-deno/Informatica"
+commit = "be981551e42a91e7a6c192e1263eadc526dd5957"
+license = "none-found"
+redistribute = false
+provenance = "public project"
+purpose = "tiny end-to-end example plus an orphan workflow (missing mapping)"
+observed_scope = { mapping_elements = 1, session_elements = 2, workflow_elements = 2 }
+eligibility = "structurally-resolvable"
+files = [
+  { path = "pwc/W_ADDRESS_TO_FILE.XML", sha256 = "15c5d27f531aab828cb2cb992b91c82812e88a5e55ff13096241c23a3f34bf45" },
+  { path = "pwc/W_CICD.XML", sha256 = "cec43b3091bfb9f39af93e8d2e97277bfe6e6fd3d585f7c98bf26bdf25d4a14f" },
+]
+
+[[group]]
+id = "crawl-fixture"
+upstream = "https://github.com/digital-rain-tech/crawl"
+commit = "9e789be70679589992676431a886171315ba8100"
+license = "Apache-2.0"
+redistribute = false  # permitted with NOTICE; not needed
+provenance = "constructed synthetic test fixture (third party)"
+purpose = "failure branches, event wait, control and email tasks, mapplet"
+observed_scope = { mapping_elements = 2, session_elements = 2, workflow_elements = 1, mapplets = 1 }
+eligibility = "structurally-resolvable"
+files = [
+  { path = "tests/fixtures/powercenter/demo_workflow.xml", sha256 = "cb3ce5c067c6a0f4674e3659ee00fcf3461ca763873239dd1e9c7ccdd2958e44" },
+]
+
+[[group]]
+id = "etlir-synthetic"
+upstream = "this repository: benchmarks/cases/"
+license = "Apache-2.0"
+redistribute = true
+provenance = "original synthetic fixtures authored for ETLIR"
+purpose = "executable vertical slice with independently authored expected outputs"
+eligibility = "behaviorally-comparable"
+files = [
+]

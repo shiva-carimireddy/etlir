@@ -1,0 +1,6 @@
+{"ID": "1", "C_CONCAT": "abcdefXY", "C_SUBSTR": "ab", "C_SUBSTR_TO_END": "abcdef", "C_TRIM": "abcdef", "C_LEN": "6", "C_ROUND": "3", "C_DIV": "2.5", "C_CMP": "GT", "C_ISNULL": "0", "C_UPPER": "XY"}
+{"ID": "2", "C_CONCAT": "abcdef", "C_SUBSTR": "ef", "C_SUBSTR_TO_END": "ef", "C_TRIM": "abcdef", "C_LEN": "6", "C_ROUND": "-3", "C_DIV": null, "C_CMP": "GT", "C_ISNULL": "0", "C_UPPER": null}
+{"ID": "3", "C_CONCAT": null, "C_SUBSTR": null, "C_SUBSTR_TO_END": null, "C_TRIM": null, "C_LEN": null, "C_ROUND": "1", "C_DIV": null, "C_CMP": "LE", "C_ISNULL": "1", "C_UPPER": null}
+{"ID": "4", "C_CONCAT": "  pad  z", "C_SUBSTR": "  p", "C_SUBSTR_TO_END": "  pad  ", "C_TRIM": "pad", "C_LEN": "7", "C_ROUND": null, "C_DIV": "0.3333", "C_CMP": "LE", "C_ISNULL": "0", "C_UPPER": "Z"}
+{"ID": "5", "C_CONCAT": "abcdefxy", "C_SUBSTR": null, "C_SUBSTR_TO_END": "def", "C_TRIM": "abcdef", "C_LEN": "6", "C_ROUND": "1", "C_DIV": "-3", "C_CMP": "LE", "C_ISNULL": "0", "C_UPPER": "XY"}
+{"ID": "6", "C_CONCAT": "abc", "C_SUBSTR": "", "C_SUBSTR_TO_END": "bc", "C_TRIM": "abc", "C_LEN": "3", "C_ROUND": "0", "C_DIV": null, "C_CMP": "LE", "C_ISNULL": "0", "C_UPPER": null}

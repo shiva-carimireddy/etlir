@@ -15,7 +15,7 @@ unique identifiers) are checked by :mod:`etlir.canonical.invariants`.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Final, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,7 +51,7 @@ class SourceRef(_Model):
 # ---------------------------------------------------------------------------- data types
 
 
-class TypeKind(str, Enum):
+class TypeKind(StrEnum):
     STRING = "string"
     INTEGER = "integer"
     BIGINT = "bigint"
@@ -104,19 +104,29 @@ class CallNode(_Model):
     args: list[ExpressionNode] = Field(default_factory=list)
 
 
+class CastNode(_Model):
+    """Explicit conversion to ``to``; the conversion rules are in docs/semantics.md."""
+
+    node: Literal["cast"] = "cast"
+    to: DataType
+    arg: ExpressionNode
+
+
 class OpaqueNode(_Model):
     """Expression text that was not parsed into the supported grammar."""
 
     node: Literal["opaque"] = "opaque"
     text: str
     dialect: str
+    reason: str | None = None
 
 
 ExpressionNode = Annotated[
-    Union[LiteralNode, ColumnRefNode, ParameterRefNode, CallNode, OpaqueNode],  # noqa: UP007
+    Union[LiteralNode, ColumnRefNode, ParameterRefNode, CallNode, CastNode, OpaqueNode],  # noqa: UP007
     Field(discriminator="node"),
 ]
 CallNode.model_rebuild()
+CastNode.model_rebuild()
 
 
 class Expression(_Model):
@@ -131,7 +141,7 @@ class Expression(_Model):
 # ---------------------------------------------------------------------------- operations
 
 
-class WriteMode(str, Enum):
+class WriteMode(StrEnum):
     APPEND = "append"
     OVERWRITE = "overwrite"
     ERROR_IF_EXISTS = "error_if_exists"
@@ -153,33 +163,52 @@ class Aggregation(_Model):
 
 
 class ReadOp(_Model):
+    """Rows of ``dataset_id``; output columns are the dataset's columns."""
+
     kind: Literal["read"] = "read"
     dataset_id: Identifier
 
 
 class WriteOp(_Model):
+    """Write the input to ``dataset_id``. Dataset columns without an input column are NULL."""
+
     kind: Literal["write"] = "write"
     dataset_id: Identifier
     mode: WriteMode = WriteMode.APPEND
 
 
 class ProjectOp(_Model):
+    """Keep ``columns`` of the input, cast to the declared output column types."""
+
     kind: Literal["project"] = "project"
     columns: list[str]
 
 
 class DeriveOp(_Model):
+    """Per row, compute each assignment from the input row (all see the same input row).
+
+    The output relation holds the declared output columns: assigned columns take the
+    assignment value; unassigned output columns pass through from the input. All values
+    are cast to the declared output column types.
+    """
+
     kind: Literal["derive"] = "derive"
     assignments: list[Assignment]
 
 
 class FilterOp(_Model):
+    """Keep rows whose predicate is TRUE (NULL counts as not TRUE)."""
+
     kind: Literal["filter"] = "filter"
     predicate_expression_id: Identifier
 
 
 class RouteOp(_Model):
-    """Evaluate each group predicate per row; rows matching no group go to ``default_group``."""
+    """Route rows to every group whose predicate is TRUE (a row may reach several groups).
+
+    Rows for which no predicate is TRUE go to ``default_group`` if one is declared, and are
+    dropped otherwise. Each group's output relation has the input columns.
+    """
 
     kind: Literal["route"] = "route"
     groups: list[RouteGroup]
@@ -187,6 +216,12 @@ class RouteOp(_Model):
 
 
 class JoinOp(_Model):
+    """Join input slots ``left`` and ``right`` on a boolean condition.
+
+    Column names of the two slots must be disjoint. NULL keys never match. ``left``
+    keeps all left rows, ``right`` all right rows, ``full`` both.
+    """
+
     kind: Literal["join"] = "join"
     join_type: Literal["inner", "left", "right", "full"]
     condition_expression_id: Identifier
@@ -201,6 +236,12 @@ class LookupOp(_Model):
 
 
 class AggregateOp(_Model):
+    """Group by ``group_by`` (NULL keys form one group) and compute ``aggregations``.
+
+    Aggregation expressions may combine aggregate functions and group keys only. Output
+    columns are the group keys followed by the aggregation columns, cast to declared types.
+    """
+
     kind: Literal["aggregate"] = "aggregate"
     group_by: list[str]
     aggregations: list[Aggregation]
@@ -257,6 +298,13 @@ class ColumnMapping(_Model):
 
 
 class DataEdge(_Model):
+    """Rows flow from an output group to an input slot.
+
+    ``columns`` renames upstream columns into the downstream operation's input columns.
+    An empty list passes every upstream column under its own name. All edges into one slot
+    must come from the same upstream operation and group.
+    """
+
     from_operation: Identifier
     from_group: str = "out"
     to_operation: Identifier
@@ -278,7 +326,7 @@ class Dataflow(_Model):
 # --------------------------------------------------------------------- workflow (control)
 
 
-class TaskKind(str, Enum):
+class TaskKind(StrEnum):
     DATAFLOW = "dataflow"
     COMMAND = "command"
     WAIT = "wait"
@@ -288,7 +336,7 @@ class TaskKind(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
-class DependencyCondition(str, Enum):
+class DependencyCondition(StrEnum):
     SUCCESS = "success"
     FAILURE = "failure"
     COMPLETION = "completion"
@@ -310,6 +358,9 @@ class Task(_Model):
     dataflow_id: Identifier | None = Field(default=None, description="Required for dataflow tasks.")
     depends_on: list[Dependency] = Field(default_factory=list)
     parameter_ids: list[Identifier] = Field(default_factory=list)
+    trigger: Literal["all", "any"] = Field(
+        default="all", description="Run when all (or any) dependencies are satisfied."
+    )
     unsupported_reason: str | None = None
     source: SourceRef
 
@@ -329,7 +380,7 @@ class Pipeline(_Model):
 # ------------------------------------------------------------------ datasets & runtime
 
 
-class DatasetKind(str, Enum):
+class DatasetKind(StrEnum):
     TABLE = "table"
     FILE = "file"
     QUEUE = "queue"
@@ -347,7 +398,7 @@ class Dataset(_Model):
     source: SourceRef
 
 
-class ParameterScope(str, Enum):
+class ParameterScope(StrEnum):
     GLOBAL = "global"
     PROJECT = "project"
     PIPELINE = "pipeline"

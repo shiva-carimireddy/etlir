@@ -1,0 +1,19 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-expression-semantics"
+title = "Truth table for canonical expression semantics (docs/semantics.md) on every target"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/m_expression_semantics.xml"]
+partition = "behaviorally-comparable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = []
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:SEM_INPUT" = { format = "csv", path = "inputs/sem_input.csv" }
+
+# Expected values follow docs/semantics.md, row by row; see README.md.
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:SEM_OUTPUT" = "expected/sem_output.jsonl"
