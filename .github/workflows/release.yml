@@ -1,0 +1,40 @@
+# Publishes to PyPI when a version tag is pushed, using PyPI Trusted Publishing (no API
+# token). One-time setup: on pypi.org add a trusted publisher for this repository,
+# workflow "release.yml", environment "pypi". Enable the Zenodo GitHub integration before
+# the first release so each GitHub Release is archived with a DOI.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

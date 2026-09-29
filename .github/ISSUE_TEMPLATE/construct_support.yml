@@ -1,0 +1,29 @@
+name: Construct support request
+description: Request (or offer to implement) support for a source construct in an existing source/target pair.
+labels: [construct-support]
+body:
+  - type: input
+    id: pair
+    attributes:
+      label: Source / target
+      placeholder: powercenter-xml -> spark
+    validations:
+      required: true
+  - type: textarea
+    id: construct
+    attributes:
+      label: Construct and semantics
+      description: What the construct does in the source, citing public documentation. Include null, type, ordering, and cardinality behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: mapping
+    attributes:
+      label: Proposed canonical representation and target lowering
+      description: Existing canonical constructs it maps to, or the IR change needed. State whether target support would be supported, constrained (with preconditions), or approximated.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to implement this with tests and an original fixture.

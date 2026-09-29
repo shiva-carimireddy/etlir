@@ -1,0 +1,50 @@
+name: New source adapter proposal
+description: Propose a source adapter for a new ETL format (in-tree or as a separate package).
+labels: [source-adapter, proposal]
+body:
+  - type: input
+    id: source
+    attributes:
+      label: Source product and format
+      placeholder: e.g. SSIS .dtsx, Talend, DataStage .dsx, Apache Hop .hpl/.hwf
+    validations:
+      required: true
+  - type: dropdown
+    id: location
+    attributes:
+      label: Where will it live?
+      options:
+        - In-tree (src/etlir/sources/<name>)
+        - Separate package (etlir-source-<name>)
+    validations:
+      required: true
+  - type: textarea
+    id: specs
+    attributes:
+      label: Public specifications and legally usable samples
+      description: Links to format documentation and sample files with their licenses.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Initial construct scope
+      description: Constructs mapped in the first version, plus those that will be reported as unsupported.
+    validations:
+      required: true
+  - type: textarea
+    id: ir
+    attributes:
+      label: Canonical IR gaps
+      description: Constructs that need Canonical IR changes (these require an ADR).
+  - type: checkboxes
+    id: commitments
+    attributes:
+      label: Commitments
+      options:
+        - label: The adapter will pass `etlir.testing.check_source_adapter`.
+          required: true
+        - label: The parser will be hardened against malicious input (see SECURITY.md).
+          required: true
+        - label: No confidential or proprietary material will be contributed.
+          required: true

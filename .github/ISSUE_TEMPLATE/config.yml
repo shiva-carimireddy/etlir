@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/shiva-carimireddy/etlir/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue.
+  - name: Questions and ideas
+    url: https://github.com/shiva-carimireddy/etlir/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions.

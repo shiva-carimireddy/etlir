@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated translation outputs and fetched third-party corpora (never committed)
+out/
+benchmarks/external/
+
+# Local-only planning material (may contain non-public context)
+private/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
