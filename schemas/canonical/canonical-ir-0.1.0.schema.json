@@ -1,0 +1,1456 @@
+{
+  "$defs": {
+    "AggregateOp": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregations": {
+          "items": {
+            "$ref": "#/$defs/Aggregation"
+          },
+          "title": "Aggregations",
+          "type": "array"
+        },
+        "group_by": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Group By",
+          "type": "array"
+        },
+        "kind": {
+          "const": "aggregate",
+          "default": "aggregate",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "group_by",
+        "aggregations"
+      ],
+      "title": "AggregateOp",
+      "type": "object"
+    },
+    "Aggregation": {
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "title": "Column",
+          "type": "string"
+        },
+        "expression_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Expression Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "column",
+        "expression_id"
+      ],
+      "title": "Aggregation",
+      "type": "object"
+    },
+    "Assignment": {
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "title": "Column",
+          "type": "string"
+        },
+        "expression_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Expression Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "column",
+        "expression_id"
+      ],
+      "title": "Assignment",
+      "type": "object"
+    },
+    "Binding": {
+      "additionalProperties": false,
+      "description": "Maps a logical resource to a runtime-resolved reference. Holds no secret values.",
+      "properties": {
+        "id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "reference": {
+          "description": "Name resolved at runtime, e.g. an environment variable.",
+          "title": "Reference",
+          "type": "string"
+        },
+        "resource_kind": {
+          "enum": [
+            "connection",
+            "path",
+            "credential",
+            "compute",
+            "other"
+          ],
+          "title": "Resource Kind",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "resource_kind",
+        "reference",
+        "source"
+      ],
+      "title": "Binding",
+      "type": "object"
+    },
+    "CallNode": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "call": "#/$defs/CallNode",
+                "column": "#/$defs/ColumnRefNode",
+                "literal": "#/$defs/LiteralNode",
+                "opaque": "#/$defs/OpaqueNode",
+                "parameter": "#/$defs/ParameterRefNode"
+              },
+              "propertyName": "node"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/LiteralNode"
+              },
+              {
+                "$ref": "#/$defs/ColumnRefNode"
+              },
+              {
+                "$ref": "#/$defs/ParameterRefNode"
+              },
+              {
+                "$ref": "#/$defs/CallNode"
+              },
+              {
+                "$ref": "#/$defs/OpaqueNode"
+              }
+            ]
+          },
+          "title": "Args",
+          "type": "array"
+        },
+        "function": {
+          "description": "Name in the canonical function catalog.",
+          "title": "Function",
+          "type": "string"
+        },
+        "node": {
+          "const": "call",
+          "default": "call",
+          "title": "Node",
+          "type": "string"
+        }
+      },
+      "required": [
+        "function"
+      ],
+      "title": "CallNode",
+      "type": "object"
+    },
+    "Column": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/DataType"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "Column",
+      "type": "object"
+    },
+    "ColumnMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "from_column": {
+          "title": "From Column",
+          "type": "string"
+        },
+        "to_column": {
+          "title": "To Column",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_column",
+        "to_column"
+      ],
+      "title": "ColumnMapping",
+      "type": "object"
+    },
+    "ColumnRefNode": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "node": {
+          "const": "column",
+          "default": "column",
+          "title": "Node",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ColumnRefNode",
+      "type": "object"
+    },
+    "DataEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/ColumnMapping"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "from_group": {
+          "default": "out",
+          "title": "From Group",
+          "type": "string"
+        },
+        "from_operation": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "From Operation",
+          "type": "string"
+        },
+        "to_input": {
+          "default": "in",
+          "description": "Input slot, e.g. 'left'/'right' for joins.",
+          "title": "To Input",
+          "type": "string"
+        },
+        "to_operation": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "To Operation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_operation",
+        "to_operation"
+      ],
+      "title": "DataEdge",
+      "type": "object"
+    },
+    "DataType": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/TypeKind"
+        },
+        "length": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Length"
+        },
+        "nullable": {
+          "default": true,
+          "title": "Nullable",
+          "type": "boolean"
+        },
+        "precision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Precision"
+        },
+        "scale": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scale"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "DataType",
+      "type": "object"
+    },
+    "Dataflow": {
+      "additionalProperties": false,
+      "description": "Operation graph for one data-movement unit. Distinct from the task graph.",
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/DataEdge"
+          },
+          "title": "Edges",
+          "type": "array"
+        },
+        "expressions": {
+          "items": {
+            "$ref": "#/$defs/Expression"
+          },
+          "title": "Expressions",
+          "type": "array"
+        },
+        "id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/Operation"
+          },
+          "title": "Operations",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "operations",
+        "edges",
+        "source"
+      ],
+      "title": "Dataflow",
+      "type": "object"
+    },
+    "Dataset": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "anyOf": [
+            {
+              "description": "Stable identifier, unique within a CanonicalDocument.",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Id"
+        },
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical format, e.g. csv, parquet.",
+          "title": "Format"
+        },
+        "id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/DatasetKind"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "source"
+      ],
+      "title": "Dataset",
+      "type": "object"
+    },
+    "DatasetKind": {
+      "enum": [
+        "table",
+        "file",
+        "queue",
+        "api",
+        "other"
+      ],
+      "title": "DatasetKind",
+      "type": "string"
+    },
+    "Dependency": {
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/DependencyCondition",
+          "default": "success"
+        },
+        "expression_id": {
+          "anyOf": [
+            {
+              "description": "Stable identifier, unique within a CanonicalDocument.",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Required when condition is 'expression'.",
+          "title": "Expression Id"
+        },
+        "task_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "title": "Dependency",
+      "type": "object"
+    },
+    "DependencyCondition": {
+      "enum": [
+        "success",
+        "failure",
+        "completion",
+        "expression"
+      ],
+      "title": "DependencyCondition",
+      "type": "string"
+    },
+    "DeriveOp": {
+      "additionalProperties": false,
+      "properties": {
+        "assignments": {
+          "items": {
+            "$ref": "#/$defs/Assignment"
+          },
+          "title": "Assignments",
+          "type": "array"
+        },
+        "kind": {
+          "const": "derive",
+          "default": "derive",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assignments"
+      ],
+      "title": "DeriveOp",
+      "type": "object"
+    },
+    "Expression": {
+      "additionalProperties": false,
+      "properties": {
+        "ast": {
+          "discriminator": {
+            "mapping": {
+              "call": "#/$defs/CallNode",
+              "column": "#/$defs/ColumnRefNode",
+              "literal": "#/$defs/LiteralNode",
+              "opaque": "#/$defs/OpaqueNode",
+              "parameter": "#/$defs/ParameterRefNode"
+            },
+            "propertyName": "node"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LiteralNode"
+            },
+            {
+              "$ref": "#/$defs/ColumnRefNode"
+            },
+            {
+              "$ref": "#/$defs/ParameterRefNode"
+            },
+            {
+              "$ref": "#/$defs/CallNode"
+            },
+            {
+              "$ref": "#/$defs/OpaqueNode"
+            }
+          ],
+          "title": "Ast"
+        },
+        "id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "original_dialect": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original Dialect"
+        },
+        "original_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original Text"
+        },
+        "result_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DataType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "id",
+        "ast",
+        "source"
+      ],
+      "title": "Expression",
+      "type": "object"
+    },
+    "FilterOp": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "filter",
+          "default": "filter",
+          "title": "Kind",
+          "type": "string"
+        },
+        "predicate_expression_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Predicate Expression Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "predicate_expression_id"
+      ],
+      "title": "FilterOp",
+      "type": "object"
+    },
+    "JoinOp": {
+      "additionalProperties": false,
+      "properties": {
+        "condition_expression_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Condition Expression Id",
+          "type": "string"
+        },
+        "join_type": {
+          "enum": [
+            "inner",
+            "left",
+            "right",
+            "full"
+          ],
+          "title": "Join Type",
+          "type": "string"
+        },
+        "kind": {
+          "const": "join",
+          "default": "join",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "join_type",
+        "condition_expression_id"
+      ],
+      "title": "JoinOp",
+      "type": "object"
+    },
+    "LineageEdge": {
+      "additionalProperties": false,
+      "description": "Column-level data lineage (distinct from source provenance).",
+      "properties": {
+        "dataflow_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Dataflow Id",
+          "type": "string"
+        },
+        "derivation": {
+          "enum": [
+            "direct",
+            "expression",
+            "aggregate",
+            "lookup",
+            "unknown"
+          ],
+          "title": "Derivation",
+          "type": "string"
+        },
+        "operation_ids": {
+          "items": {
+            "description": "Stable identifier, unique within a CanonicalDocument.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+            "type": "string"
+          },
+          "title": "Operation Ids",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "sources": {
+          "description": "dataset_id.column entries",
+          "items": {
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "target": {
+          "description": "dataset_id.column",
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "sources",
+        "dataflow_id",
+        "operation_ids",
+        "derivation",
+        "source"
+      ],
+      "title": "LineageEdge",
+      "type": "object"
+    },
+    "LiteralNode": {
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "const": "literal",
+          "default": "literal",
+          "title": "Node",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/DataType"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Literal value. Decimals and timestamps are encoded as strings.",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "type"
+      ],
+      "title": "LiteralNode",
+      "type": "object"
+    },
+    "LookupOp": {
+      "additionalProperties": false,
+      "properties": {
+        "condition_expression_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Condition Expression Id",
+          "type": "string"
+        },
+        "dataset_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "lookup",
+          "default": "lookup",
+          "title": "Kind",
+          "type": "string"
+        },
+        "on_multiple_match": {
+          "enum": [
+            "error",
+            "first",
+            "last",
+            "any",
+            "all"
+          ],
+          "title": "On Multiple Match",
+          "type": "string"
+        },
+        "return_columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Return Columns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "dataset_id",
+        "condition_expression_id",
+        "on_multiple_match",
+        "return_columns"
+      ],
+      "title": "LookupOp",
+      "type": "object"
+    },
+    "OpaqueNode": {
+      "additionalProperties": false,
+      "description": "Expression text that was not parsed into the supported grammar.",
+      "properties": {
+        "dialect": {
+          "title": "Dialect",
+          "type": "string"
+        },
+        "node": {
+          "const": "opaque",
+          "default": "opaque",
+          "title": "Node",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "dialect"
+      ],
+      "title": "OpaqueNode",
+      "type": "object"
+    },
+    "Operation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "outputs": {
+          "items": {
+            "$ref": "#/$defs/OutputGroup"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "spec": {
+          "discriminator": {
+            "mapping": {
+              "aggregate": "#/$defs/AggregateOp",
+              "derive": "#/$defs/DeriveOp",
+              "filter": "#/$defs/FilterOp",
+              "join": "#/$defs/JoinOp",
+              "lookup": "#/$defs/LookupOp",
+              "project": "#/$defs/ProjectOp",
+              "read": "#/$defs/ReadOp",
+              "route": "#/$defs/RouteOp",
+              "union": "#/$defs/UnionOp",
+              "unsupported": "#/$defs/UnsupportedOp",
+              "write": "#/$defs/WriteOp"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ReadOp"
+            },
+            {
+              "$ref": "#/$defs/WriteOp"
+            },
+            {
+              "$ref": "#/$defs/ProjectOp"
+            },
+            {
+              "$ref": "#/$defs/DeriveOp"
+            },
+            {
+              "$ref": "#/$defs/FilterOp"
+            },
+            {
+              "$ref": "#/$defs/RouteOp"
+            },
+            {
+              "$ref": "#/$defs/JoinOp"
+            },
+            {
+              "$ref": "#/$defs/LookupOp"
+            },
+            {
+              "$ref": "#/$defs/AggregateOp"
+            },
+            {
+              "$ref": "#/$defs/UnionOp"
+            },
+            {
+              "$ref": "#/$defs/UnsupportedOp"
+            }
+          ],
+          "title": "Spec"
+        }
+      },
+      "required": [
+        "id",
+        "spec",
+        "source"
+      ],
+      "title": "Operation",
+      "type": "object"
+    },
+    "OutputGroup": {
+      "additionalProperties": false,
+      "description": "Named output relation of an operation (most operations have exactly one).",
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "name": {
+          "default": "out",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "columns"
+      ],
+      "title": "OutputGroup",
+      "type": "object"
+    },
+    "Parameter": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Never populated for sensitive values.",
+          "title": "Default"
+        },
+        "id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ParameterScope"
+        },
+        "sensitive": {
+          "default": false,
+          "title": "Sensitive",
+          "type": "boolean"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "type": {
+          "$ref": "#/$defs/DataType"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "scope",
+        "type",
+        "source"
+      ],
+      "title": "Parameter",
+      "type": "object"
+    },
+    "ParameterRefNode": {
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "const": "parameter",
+          "default": "parameter",
+          "title": "Node",
+          "type": "string"
+        },
+        "parameter_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Parameter Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "parameter_id"
+      ],
+      "title": "ParameterRefNode",
+      "type": "object"
+    },
+    "ParameterScope": {
+      "enum": [
+        "global",
+        "project",
+        "pipeline",
+        "task",
+        "dataflow",
+        "environment"
+      ],
+      "title": "ParameterScope",
+      "type": "string"
+    },
+    "Pipeline": {
+      "additionalProperties": false,
+      "description": "Logical unit of orchestration: a task dependency graph.",
+      "properties": {
+        "expressions": {
+          "description": "Expressions used by task-level conditions.",
+          "items": {
+            "$ref": "#/$defs/Expression"
+          },
+          "title": "Expressions",
+          "type": "array"
+        },
+        "id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/Task"
+          },
+          "title": "Tasks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "tasks",
+        "source"
+      ],
+      "title": "Pipeline",
+      "type": "object"
+    },
+    "ProjectOp": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "kind": {
+          "const": "project",
+          "default": "project",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "columns"
+      ],
+      "title": "ProjectOp",
+      "type": "object"
+    },
+    "ReadOp": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "read",
+          "default": "read",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset_id"
+      ],
+      "title": "ReadOp",
+      "type": "object"
+    },
+    "RouteGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "predicate_expression_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Predicate Expression Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "predicate_expression_id"
+      ],
+      "title": "RouteGroup",
+      "type": "object"
+    },
+    "RouteOp": {
+      "additionalProperties": false,
+      "description": "Evaluate each group predicate per row; rows matching no group go to ``default_group``.",
+      "properties": {
+        "default_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Group"
+        },
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/RouteGroup"
+          },
+          "title": "Groups",
+          "type": "array"
+        },
+        "kind": {
+          "const": "route",
+          "default": "route",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "groups"
+      ],
+      "title": "RouteOp",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "description": "Link from a canonical entity back to its source artifact (source trace).",
+      "properties": {
+        "adapter": {
+          "description": "Registered source adapter id that produced the entity.",
+          "title": "Adapter",
+          "type": "string"
+        },
+        "artifact": {
+          "description": "Input artifact identity, e.g. a relative path.",
+          "title": "Artifact",
+          "type": "string"
+        },
+        "locator": {
+          "description": "Location inside the artifact, e.g. an XPath.",
+          "title": "Locator",
+          "type": "string"
+        },
+        "native_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identifier in the source system.",
+          "title": "Native Id"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Normalization rule id applied.",
+          "title": "Rule"
+        }
+      },
+      "required": [
+        "adapter",
+        "artifact",
+        "locator"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    },
+    "Task": {
+      "additionalProperties": false,
+      "properties": {
+        "dataflow_id": {
+          "anyOf": [
+            {
+              "description": "Stable identifier, unique within a CanonicalDocument.",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Required for dataflow tasks.",
+          "title": "Dataflow Id"
+        },
+        "depends_on": {
+          "items": {
+            "$ref": "#/$defs/Dependency"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TaskKind"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parameter_ids": {
+          "items": {
+            "description": "Stable identifier, unique within a CanonicalDocument.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+            "type": "string"
+          },
+          "title": "Parameter Ids",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "unsupported_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unsupported Reason"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "source"
+      ],
+      "title": "Task",
+      "type": "object"
+    },
+    "TaskKind": {
+      "enum": [
+        "dataflow",
+        "command",
+        "wait",
+        "notify",
+        "assignment",
+        "decision",
+        "unsupported"
+      ],
+      "title": "TaskKind",
+      "type": "string"
+    },
+    "TypeKind": {
+      "enum": [
+        "string",
+        "integer",
+        "bigint",
+        "decimal",
+        "double",
+        "boolean",
+        "date",
+        "timestamp",
+        "binary",
+        "unknown"
+      ],
+      "title": "TypeKind",
+      "type": "string"
+    },
+    "UnionOp": {
+      "additionalProperties": false,
+      "properties": {
+        "distinct": {
+          "default": false,
+          "title": "Distinct",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "union",
+          "default": "union",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "UnionOp",
+      "type": "object"
+    },
+    "UnsupportedOp": {
+      "additionalProperties": false,
+      "description": "A recognized source construct with no canonical semantics yet. Always blocks emission.",
+      "properties": {
+        "kind": {
+          "const": "unsupported",
+          "default": "unsupported",
+          "title": "Kind",
+          "type": "string"
+        },
+        "native_kind": {
+          "title": "Native Kind",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_kind",
+        "reason"
+      ],
+      "title": "UnsupportedOp",
+      "type": "object"
+    },
+    "WriteMode": {
+      "enum": [
+        "append",
+        "overwrite",
+        "error_if_exists"
+      ],
+      "title": "WriteMode",
+      "type": "string"
+    },
+    "WriteOp": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "write",
+          "default": "write",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/WriteMode",
+          "default": "append"
+        }
+      },
+      "required": [
+        "dataset_id"
+      ],
+      "title": "WriteOp",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/shiva-carimireddy/etlir/schemas/canonical/canonical-ir-0.1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bindings": {
+      "items": {
+        "$ref": "#/$defs/Binding"
+      },
+      "title": "Bindings",
+      "type": "array"
+    },
+    "dataflows": {
+      "items": {
+        "$ref": "#/$defs/Dataflow"
+      },
+      "title": "Dataflows",
+      "type": "array"
+    },
+    "datasets": {
+      "items": {
+        "$ref": "#/$defs/Dataset"
+      },
+      "title": "Datasets",
+      "type": "array"
+    },
+    "ir_version": {
+      "const": "0.1.0",
+      "default": "0.1.0",
+      "title": "Ir Version",
+      "type": "string"
+    },
+    "lineage": {
+      "items": {
+        "$ref": "#/$defs/LineageEdge"
+      },
+      "title": "Lineage",
+      "type": "array"
+    },
+    "parameters": {
+      "items": {
+        "$ref": "#/$defs/Parameter"
+      },
+      "title": "Parameters",
+      "type": "array"
+    },
+    "pipelines": {
+      "items": {
+        "$ref": "#/$defs/Pipeline"
+      },
+      "title": "Pipelines",
+      "type": "array"
+    }
+  },
+  "title": "CanonicalDocument",
+  "type": "object"
+}

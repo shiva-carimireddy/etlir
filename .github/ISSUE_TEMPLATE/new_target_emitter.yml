@@ -1,0 +1,45 @@
+name: New target emitter proposal
+description: Propose a target emitter for a new platform (in-tree or as a separate package).
+labels: [target-emitter, proposal]
+body:
+  - type: input
+    id: target
+    attributes:
+      label: Target platform and artifact type
+      placeholder: e.g. DuckDB SQL, dbt models, Airflow DAGs, Flink SQL
+    validations:
+      required: true
+  - type: dropdown
+    id: location
+    attributes:
+      label: Where will it live?
+      options:
+        - In-tree (src/etlir/targets/<name>)
+        - Separate package (etlir-target-<name>)
+    validations:
+      required: true
+  - type: textarea
+    id: manifest
+    attributes:
+      label: Draft capability manifest
+      description: Constructs that are supported, constrained (with preconditions), approximated, and blocked.
+    validations:
+      required: true
+  - type: textarea
+    id: runtime
+    attributes:
+      label: Pinned runtime and execution test plan
+      description: How generated artifacts are executed locally in CI, with exact versions.
+    validations:
+      required: true
+  - type: checkboxes
+    id: commitments
+    attributes:
+      label: Commitments
+      options:
+        - label: The emitter will pass `etlir.testing.check_target_emitter`.
+          required: true
+        - label: The emitter consumes Canonical IR only and never imports a source adapter.
+          required: true
+        - label: Expressions are lowered from the typed AST; source text is never pasted into generated code.
+          required: true

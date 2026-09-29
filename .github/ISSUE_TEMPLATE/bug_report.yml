@@ -1,0 +1,31 @@
+name: Bug report
+description: Something produced wrong output, crashed, or violated a contract.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include the command, the stage (inventory/normalize/validate/emit/run), and any diagnostic codes.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: A minimal synthetic input. Never attach confidential or employer metadata.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `etlir version` and `etlir plugins`
+    validations:
+      required: true

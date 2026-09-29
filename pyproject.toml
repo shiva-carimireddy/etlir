@@ -1,0 +1,95 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "etlir"
+dynamic = ["version"]
+description = "Source- and target-decoupled ETL modernization framework built on a typed, traceable Canonical Intermediate Representation."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.10"
+authors = [{ name = "Shiva Kumar Reddy Carimireddy", email = "shivacarimireddy@ieee.org" }]
+keywords = [
+  "etl",
+  "intermediate-representation",
+  "data-engineering",
+  "modernization",
+  "migration",
+  "provenance",
+  "spark",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Database",
+  "Topic :: Software Development :: Code Generators",
+  "Topic :: Software Development :: Compilers",
+  "Typing :: Typed",
+]
+dependencies = [
+  "pydantic>=2.7,<3",
+  "packaging>=23",
+  "defusedxml>=0.7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+  "mypy>=1.10",
+]
+
+[project.scripts]
+etlir = "etlir.cli:main"
+
+# Plugin discovery. In-tree and third-party packages register here; see docs/extending.md.
+# Adapters and emitters are added to these tables as they are implemented.
+# [project.entry-points."etlir.sources"]
+# [project.entry-points."etlir.targets"]
+
+[project.urls]
+Homepage = "https://github.com/shiva-carimireddy/etlir"
+Repository = "https://github.com/shiva-carimireddy/etlir"
+Issues = "https://github.com/shiva-carimireddy/etlir/issues"
+Changelog = "https://github.com/shiva-carimireddy/etlir/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/etlir/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/etlir"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "schemas/", "tests/", "docs/", "LICENSE", "NOTICE", "README.md", "CITATION.cff", "CHANGELOG.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "spark: requires a local PySpark/Java runtime (skipped when unavailable)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S"]
+ignore = ["S101"]  # assert is idiomatic in pytest
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+packages = ["etlir"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]

@@ -1,0 +1,14 @@
+# Default owner
+*                                   @shiva-carimireddy
+
+# Central contracts: changes need a maintainer and an ADR
+/src/etlir/canonical/               @shiva-carimireddy
+/src/etlir/contracts.py             @shiva-carimireddy
+/src/etlir/capabilities.py          @shiva-carimireddy
+/schemas/                           @shiva-carimireddy
+/benchmarks/protocol.md             @shiva-carimireddy
+/docs/claims-policy.md              @shiva-carimireddy
+
+# Plugins: add plugin owners here as they join, e.g.
+# /src/etlir/sources/<name>/        @owner
+# /src/etlir/targets/<name>/        @owner

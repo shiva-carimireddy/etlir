@@ -1,0 +1,10 @@
+{
+  "flow": "orders",
+  "source": {
+    "name": "orders_src",
+    "columns": [["order_id", "integer"], ["status", "string"], ["gross", "decimal"], ["discount", "decimal"]]
+  },
+  "filter": {"column": "status", "equals": "COMPLETE"},
+  "derive": {"net": ["subtract", "gross", "discount"]},
+  "target": "orders_curated"
+}
