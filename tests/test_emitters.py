@@ -55,14 +55,15 @@ def test_blocked_paths_get_no_job(cls: type[TargetEmitter], mixed_doc: Canonical
     status = {j["dataflow_id"].split(":")[-1]: j["status"] for j in plan["jobs"]}
     assert status == {
         "s_m_CUSTOMER_COPY": "emitted",
+        "s_m_CUSTOMER_KEYS": "blocked",
         "s_m_CUSTOMER_OVERRIDE": "blocked",
-        "s_m_CUSTOMER_REGION": "blocked",
+        "s_m_NOT_ALIGNED": "blocked",
     }
     [pipeline] = plan["workflow"]["pipelines"]
     assert pipeline["status"] == "partially-blocked"
     tasks = {t["name"]: t for t in pipeline["tasks"]}
     assert tasks["s_m_CUSTOMER_COPY"]["status"] == "runnable"
-    for name in ("s_m_CUSTOMER_REGION", "s_m_CUSTOMER_OVERRIDE", "cmd_ARCHIVE"):
+    for name in ("s_m_CUSTOMER_KEYS", "s_m_CUSTOMER_OVERRIDE", "s_m_NOT_ALIGNED", "cmd_ARCHIVE"):
         assert tasks[name]["status"] == "blocked" and tasks[name]["command"] is None
         assert tasks[name]["reasons"]
     assert any("task.command" in r for r in tasks["cmd_ARCHIVE"]["reasons"])

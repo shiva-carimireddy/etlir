@@ -22,7 +22,8 @@ edges into one slot come from the same upstream output group (IR-V-013).
 | `filter` | Keeps rows whose predicate is TRUE. NULL is not TRUE. |
 | `route` | A row goes to **every** group whose predicate is TRUE; rows matching none go to the default group if declared, else are dropped. |
 | `join` | Slots `left`/`right` with disjoint column names; `inner`/`left`/`right`/`full`; NULL keys never match. |
-| `aggregate` | Groups by the key columns (NULL keys form one group); aggregation expressions may use aggregate functions and group keys only. |
+| `aggregate` | Groups by the key columns (NULL keys form one group); aggregation expressions may use aggregate functions and group keys only. With **no** key columns it is a global aggregate: exactly one output row, even for empty input. With no aggregations it is DISTINCT over the keys. |
+| `lookup` | For each row of slot `in`, the rows of slot `lookup` where the condition is TRUE (NULL never matches). Input columns pass through; `returns` maps lookup columns to output columns, NULL when nothing matches. `any`: the first match when lookup columns are sorted ascending in declared order, NULLs last (deterministic); `error`: the task fails if any input row has more than one match; `all`: one output row per match. The two slots' column names are disjoint. |
 | `write` | Writes the input to the dataset; dataset columns without an input column are NULL. Modes: `append`, `overwrite`, `error_if_exists`. |
 | `unsupported` | A recognized source construct with no semantics yet. Always blocks. |
 
@@ -33,8 +34,10 @@ Row order is not part of the semantics of any 0.1 operation.
 Types: `string`, `integer` (32-bit), `bigint`, `decimal(p,s)` (exact), `double`,
 `boolean`, `date`, `timestamp` (UTC, microseconds), `binary`, `unknown`.
 
-`cast` is defined between numeric types (decimal rounding is half away from zero) and
-from boolean to numeric (TRUE→1, FALSE→0). No implicit string↔number or string↔time
+`cast` is defined between numeric types (casts to integral types round half away from
+zero), from boolean to numeric (TRUE→1, FALSE→0), and from string to decimal (the string
+must be a decimal literal; anything else fails the task). The last is used only for
+parameter values substituted into SQL text. No implicit string↔number or string↔time
 conversion exists; an adapter must emit an opaque expression instead.
 
 String length (`DataType.length`) is informational in 0.1: targets do not truncate or
@@ -91,4 +94,6 @@ Found by probing both engines and pinned by the `pc-expression-semantics` case:
 | `substring(s, 0, n)` | as position 1 | before position 1 | position normalized in generated code before calling the engine |
 | Quoted empty CSV field | NULL | `''` by default | NULL; DuckDB reads with `allow_quoted_nulls=true` |
 | Division by zero | error (ANSI mode) | `inf` | NULL; `try_divide` / `CASE WHEN divisor = 0` |
+| "Any" match in a lookup | no built-in | no built-in | explicit ordered pick (`row_number` over the declared lookup columns) |
+| Failing on duplicate lookup matches | no built-in | no built-in | explicit check that raises (`count` / DuckDB `error()`) |
 | Decimal division result | decimal | double | result cast to the declared column type |

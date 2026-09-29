@@ -1,0 +1,17 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-lookup-duplicate"
+title = "Use First Value lookup over duplicate keys: the run must fail, not guess an order"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/wf_first_value.xml"]
+partition = "locally-executable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = ["PC-N-006"]
+execution = "failed"
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:ORDERS2" = { format = "csv", path = "inputs/orders2.csv" }
+"bind:ETLIR_SYNTH:ETLIR_DEMO:lkp:CUSTOMER_DIM:LKP_CUST" = { format = "csv", path = "inputs/customer_dim.csv" }

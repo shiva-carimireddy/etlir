@@ -41,8 +41,19 @@ RUNTIME_MODULE = "etlir_duckdb_runtime"
 _SUPPORTED = [
     *(
         f"operation.{k}"
-        for k in ("read", "write", "project", "derive", "filter", "route", "join", "aggregate")
+        for k in (
+            "read",
+            "write",
+            "project",
+            "derive",
+            "filter",
+            "route",
+            "join",
+            "aggregate",
+            "lookup",
+        )
     ),
+    *(f"lookup.{p}" for p in ("any", "error", "all")),
     *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists")),
     "task.dataflow",
     *(f"dependency.{c}" for c in ("success", "failure", "completion")),
@@ -307,6 +318,9 @@ class _Job:
             ex[i] = lower(ast, self.params, in_types, p_types)
             ex_types[i] = infer(ast, in_types, p_types)
         computed = {a.column: ex_types[a.expression_id] for a in getattr(spec, "assignments", [])}
+        if s.kind == "lookup":
+            lk_types = {c.name: c.type for c in s.inputs["lookup"].columns}
+            computed |= {m.to_column: lk_types[m.from_column] for m in spec.returns}
         computed |= {a.column: ex_types[a.expression_id] for a in getattr(spec, "aggregations", [])}
 
         def cols(columns: list[Any], exprs: dict[str, str] | None = None) -> str:
@@ -333,7 +347,7 @@ class _Job:
                 (
                     _cast(q(c.name), c.type, in_types.get(c.name))
                     if c.name in present
-                    else f"CAST(NULL AS {sql_type(c.type)})"
+                    else (f"CAST(NULL AS {sql_type(c.type)})" if sql_type(c.type) else "NULL")
                 )
                 + f" AS {q(c.name)}"
                 for c in ds.columns
@@ -341,6 +355,39 @@ class _Job:
             view = f"w{len(self.writes) + 1}"
             self.create(view, f"SELECT {items} FROM {self.src(ref)}")
             self.writes.append((ds.binding_id or ds.id, view, spec.mode.value))
+        elif s.kind == "lookup":
+            i_src, l_src = self.src(s.inputs["in"]), self.src(s.inputs["lookup"])
+            rets = {m.to_column: q(m.from_column) for m in spec.returns}
+            cond = ex[spec.condition_expression_id]
+            policy = spec.on_multiple_match
+            if policy == "all":
+                body = f"{i_src} AS i LEFT JOIN {l_src} AS l ON {cond}"
+                self.create(
+                    self.view(s.output_relation()),
+                    f"SELECT {cols(s.outputs[0].columns, rets)} FROM {body}",
+                )
+            else:
+                order = ", ".join(
+                    f"l.{q(c.name)} ASC NULLS LAST" for c in s.inputs["lookup"].columns
+                )
+                inner = (
+                    "SELECT i.*, l.*, row_number() OVER (PARTITION BY i.__etlir_rid ORDER BY "
+                    f"{order}) AS __etlir_rn, count(l.__etlir_hit) OVER (PARTITION BY "
+                    "i.__etlir_rid) AS __etlir_cnt FROM (SELECT *, row_number() OVER () AS "
+                    f"__etlir_rid FROM {i_src}) AS i LEFT JOIN (SELECT *, 1 AS __etlir_hit "
+                    f"FROM {l_src}) AS l ON {cond}"
+                )
+                where = "__etlir_rn = 1"
+                if policy == "error":
+                    name = s.op_id.split(":")[-1].replace("'", "''")
+                    where += (
+                        " AND (CASE WHEN __etlir_cnt > 1 THEN error('lookup "
+                        f"{name}: an input row has more than one match') ELSE TRUE END)"
+                    )
+                self.create(
+                    self.view(s.output_relation()),
+                    f"SELECT {cols(s.outputs[0].columns, rets)} FROM ({inner}) WHERE {where}",
+                )
         elif s.kind == "join":
             how = {"inner": "INNER", "left": "LEFT", "right": "RIGHT", "full": "FULL OUTER"}
             left, right = self.src(s.inputs["left"]), self.src(s.inputs["right"])
@@ -389,11 +436,12 @@ class _Job:
             elif s.kind == "aggregate":
                 keys = ", ".join(q(k) for k in spec.group_by)
                 aggs = [f"{ex[a.expression_id]} AS {q(a.column)}" for a in spec.aggregations]
-                inner = (
-                    f"SELECT {', '.join([keys, *aggs])} FROM {src} GROUP BY {keys}"
-                    if aggs
-                    else f"SELECT DISTINCT {keys} FROM {src}"
-                )
+                if not aggs:
+                    inner = f"SELECT DISTINCT {keys} FROM {src}"
+                elif not keys:  # global aggregate: exactly one row, even for empty input
+                    inner = f"SELECT {', '.join(aggs)} FROM {src}"
+                else:
+                    inner = f"SELECT {', '.join([keys, *aggs])} FROM {src} GROUP BY {keys}"
                 self.create(
                     self.view(s.output_relation()),
                     f"SELECT {cols(s.outputs[0].columns)} FROM ({inner})",

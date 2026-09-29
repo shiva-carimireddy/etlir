@@ -86,19 +86,23 @@ etlir convert path/to/exports/ --out out/mine  # every stage + report.html
 
 ## What works in 0.1.0
 
-**PowerCenter subset** ([details](docs/sources/powercenter.md)): flat-file sources and
-targets, Source Qualifier (no SQL overrides), Expression (including stateless variable
-ports), Filter, Router, Joiner, Aggregator, mapping parameters, sessions, workflows with
-success/failure/unconditional links, cross-file resolution, and a typed parser for a
-documented subset of the expression language.
+**PowerCenter subset** ([details](docs/sources/powercenter.md)): flat-file and relational
+sources and targets; Source Qualifier including SQL overrides, source filters,
+user-defined joins and SELECT DISTINCT (a SQLGlot-parsed subset, including Oracle `(+)`
+joins and GROUP BY aggregates); connected and unconnected (`:LKP`) Lookups, including
+SQL-override and range lookups; Expression (stateless variable ports), Filter, Router,
+Joiner, Aggregator; row-aligned merges of several branches; mapping parameters and
+run-constant mapping variables; sessions and workflows with success/failure/unconditional
+links; cross-file resolution; a typed parser for a documented expression subset.
 
 **Targets** ([details](docs/targets.md), [support matrix](docs/support-matrix.md)):
 PySpark DataFrame jobs (`spark-submit`, Spark 4.2 / Java 17) and DuckDB SQL, both
 executed by a reference workflow runner.
 
-**Blocked with reasons:** Lookup, Update Strategy, Sequence, Normalizer, Sorter, Rank,
-mapplets, SQL overrides, stateful variables, command/email/event tasks, custom link
-conditions, and anything outside the expression subset.
+**Blocked with reasons:** Update Strategy, Sequence Generator, Normalizer, Sorter, Rank,
+mapplets, dynamic lookup caches, SQL outside the accepted subset (subqueries, `SELECT *`,
+…), stateful variables, command/email/event tasks, custom link conditions, and functions
+outside the expression subset (`DECODE`, `TO_CHAR`, `LPAD`, date functions, …).
 
 **Covered by the test suite:** secure XML loading (XXE and entity expansion rejected); Raw IR
 preservation; byte-identical repeat conversions; conformance of both emitters; output

@@ -52,10 +52,14 @@ unsupported operation, task or opaque expression, which blocks the affected path
 | `function.subtract` | supported | supported |
 | `function.sum` | supported | supported |
 | `function.upper` | supported | supported |
+| `lookup.all` | supported | supported |
+| `lookup.any` | supported | supported |
+| `lookup.error` | supported | supported |
 | `operation.aggregate` | supported | supported |
 | `operation.derive` | supported | supported |
 | `operation.filter` | supported | supported |
 | `operation.join` | supported | supported |
+| `operation.lookup` | supported | supported |
 | `operation.project` | supported | supported |
 | `operation.read` | constrained (c) | constrained (c) |
 | `operation.route` | supported | supported |

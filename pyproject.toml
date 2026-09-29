@@ -39,6 +39,7 @@ dependencies = [
   "pydantic>=2.7,<3",
   "packaging>=23",
   "defusedxml>=0.7",
+  "sqlglot>=30,<31",
 ]
 
 [project.optional-dependencies]
@@ -100,6 +101,9 @@ ignore = ["S101"]  # assert is idiomatic in pytest
 # SQL code generator: identifiers are quoted with q(), literals escaped with lit(); source
 # text is never interpolated (expressions are lowered from the typed Canonical IR AST).
 "src/etlir/targets/duckdb/*.py" = ["S608"]
+# SQL text here is only parsed (with SQLGlot) into canonical operations, never executed.
+"src/etlir/sources/powercenter/sql.py" = ["S608"]
+"src/etlir/sources/powercenter/normalize.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.11"

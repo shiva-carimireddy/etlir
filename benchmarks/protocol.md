@@ -33,7 +33,7 @@ is reported as numerator/denominator.
 | Task runnability | summary `targets.<t>.tasks` | runnable / total tasks |
 | Deterministic conversion | results `deterministic_conversion` | byte-identical repeat conversions / cases |
 | Expectation checks | results `expectation_checks_passed` | cases whose blocked tasks and diagnostic codes match the manifest / cases |
-| Execution | results `execution_completed` | completed runs / executed cases |
+| Execution | results `execution_as_expected` | runs with the declared outcome (succeeded, partial or failed) / executed cases |
 | Output agreement | results `output_agreement` | cases agreeing on all declared outputs / compared cases |
 | Mutation detection | results `mutations_detected` | detected / applicable mutation operators |
 
@@ -58,8 +58,9 @@ as **specified-behavior agreement**, not PowerCenter equivalence.
 
 Operators (in `etlir/benchmark.py`): negate filter predicates, shift comparison
 boundaries, subtract→add, concat→coalesce, remove trimming, outer→inner join,
-count→count(*). A mutation is detected if execution fails or any compared output
-disagrees. Operators with no site in a case are reported as not applicable. A surviving
+count→count(*), lookup any→error. A mutation is detected if execution fails or any
+compared output disagrees. Operators with no site in a case, or whose sites all lie in
+blocked dataflows (emitted code unchanged), are reported as not applicable. A surviving
 mutation indicates a gap in the fixture or the expectations and is fixed by adding data,
 recorded in the case change log.
 

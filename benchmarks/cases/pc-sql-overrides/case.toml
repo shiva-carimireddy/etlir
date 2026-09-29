@@ -1,0 +1,26 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-sql-overrides"
+title = "Source qualifier SQL: Oracle outer join, aggregate query, source filter with DISTINCT, user-defined join"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/wf_sql_overrides.xml"]
+partition = "behaviorally-comparable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = ["PC-N-005"]
+
+# $$MIN_HIRE_YEAR is a mapping variable the mapping never modifies: a run parameter.
+[params]
+"prm:ETLIR_SYNTH:ETLIR_DEMO:m_SQL_JOIN:MIN_HIRE_YEAR" = "2018"
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:ORCL:EMP" = { format = "csv", path = "inputs/emp.csv" }
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:ORCL:DEPT" = { format = "csv", path = "inputs/dept.csv" }
+
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:EMP_DEPT_OUT" = "expected/emp_dept_out.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:DEPT_STATS" = "expected/dept_stats.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:DEPT_STATUS" = "expected/dept_status.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:EMP_EU" = "expected/emp_eu.jsonl"

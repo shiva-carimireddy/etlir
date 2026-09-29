@@ -62,7 +62,8 @@ def run(job: dict[str, Any]) -> None:
                     + ")"
                 )
             elif fmt == "jsonl":
-                src = f"read_json({_lit(str(path))}, columns={cols}, format='newline_delimited')"
+                pattern = str(path / "*.json") if path.is_dir() else str(path)
+                src = f"read_json({_lit(pattern)}, columns={cols}, format='newline_delimited')"
             else:
                 raise ValueError(f"unsupported input format '{fmt}' for binding '{binding_id}'")
             con.execute(f"CREATE TEMP VIEW {_q(binding_id)} AS SELECT * FROM {src}")

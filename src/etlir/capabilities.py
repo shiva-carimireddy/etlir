@@ -33,7 +33,8 @@ class CapabilityState(StrEnum):
 
 class CapabilityRule(_Model):
     construct_id: str = Field(
-        description="Construct key: 'operation.<kind>', 'write.<mode>', 'task.<kind>', "
+        description="Construct key: 'operation.<kind>', 'write.<mode>', 'lookup.<policy>', "
+        "'task.<kind>', "
         "'dependency.<condition>', 'trigger.any', 'function.<name>', 'cast.<type>' or "
         "'expression.opaque'."
     )
@@ -117,6 +118,8 @@ def analyze(
             constructs = [f"operation.{op.spec.kind}"]
             if op.spec.kind == "write":
                 constructs.append(f"write.{op.spec.mode.value}")
+            elif op.spec.kind == "lookup":
+                constructs.append(f"lookup.{op.spec.on_multiple_match}")
             for c in constructs:
                 if decide(op.id, c, op.source) is CapabilityState.BLOCKED:
                     blocked_dataflows.add(df.id)

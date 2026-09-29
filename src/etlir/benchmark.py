@@ -49,6 +49,17 @@ def _same_tree(a: Path, b: Path) -> bool:
     return fa == fb and all(filecmp.cmp(a / f, b / f, shallow=False) for f in fa)
 
 
+def _same_code(a: Path, b: Path) -> bool:
+    def code(root: Path) -> dict[str, bytes]:
+        return {
+            p.relative_to(root).as_posix(): p.read_bytes()
+            for p in root.rglob("*")
+            if p.is_file() and p.relative_to(root).parts[0] in ("jobs", "sql")
+        }
+
+    return code(a) == code(b)
+
+
 def _bindings(case: dict[str, Any], package: Path, run_dir: Path) -> Path:
     example = json.loads((package / "bindings.example.json").read_text("utf-8"))
     declared = case.get("bindings", {})
@@ -66,6 +77,15 @@ def _bindings(case: dict[str, Any], package: Path, run_dir: Path) -> Path:
     path = run_dir / "bindings.json"
     run_dir.mkdir(parents=True, exist_ok=True)
     write_json(path, out)
+    return path
+
+
+def _params(case: dict[str, Any], run_dir: Path) -> Path | None:
+    values = case.get("params")
+    if not values:
+        return None
+    path = run_dir / "params.json"
+    write_json(path, values)
     return path
 
 
@@ -134,10 +154,12 @@ def run_case(
         if case.get("partition") in EXECUTABLE:
             run_dir = base / "runs" / tid
             bindings = _bindings(case, package, run_dir)
+            params = _params(case, run_dir)
             execution = run_package(
                 package,
                 bindings,
                 run_dir,
+                params,
                 launcher=launcher,
                 spark_writer=spark_writer,
                 allow_partial=case.get("run", {}).get("allow_partial", False),
@@ -155,7 +177,15 @@ def run_case(
                     3,
                 ),
             }
-            if case.get("partition") == "behaviorally-comparable":
+            expected_status = expect.get(
+                "execution", "partial" if case.get("run", {}).get("allow_partial") else "succeeded"
+            )
+            row["checks"]["execution"] = {
+                "expected": expected_status,
+                "actual": execution["status"],
+                "ok": execution["status"] == expected_status,
+            }
+            if case.get("partition") == "behaviorally-comparable" and expected_status != "failed":
                 expectations = {b: case["dir"] / p for b, p in case.get("outputs", {}).items()}
                 cmp = compare_outputs(
                     doc, json.loads(bindings.read_text("utf-8")), bindings, expectations
@@ -256,6 +286,22 @@ def _join_to_inner(doc: CanonicalDocument) -> tuple[CanonicalDocument, int]:
     return doc.model_copy(update={"dataflows": dataflows}), n
 
 
+def _lookup_any_to_error(doc: CanonicalDocument) -> tuple[CanonicalDocument, int]:
+    n = 0
+    dataflows = []
+    for df in doc.dataflows:
+        ops: list[Operation] = []
+        for o in df.operations:
+            if o.spec.kind == "lookup" and o.spec.on_multiple_match == "any":
+                n += 1
+                o = o.model_copy(
+                    update={"spec": o.spec.model_copy(update={"on_multiple_match": "error"})}
+                )
+            ops.append(o)
+        dataflows.append(df.model_copy(update={"operations": ops}))
+    return doc.model_copy(update={"dataflows": dataflows}), n
+
+
 MUTATIONS: dict[str, Callable[[CanonicalDocument], tuple[CanonicalDocument, int]]] = {
     "negate-filter-predicates": _negate_filters,
     "comparison-boundary-shift": lambda d: _rewrite_expressions(
@@ -267,6 +313,7 @@ MUTATIONS: dict[str, Callable[[CanonicalDocument], tuple[CanonicalDocument, int]
         d, lambda c: c.args[0] if c.function in ("ltrim", "rtrim") else None
     ),
     "outer-join-to-inner": _join_to_inner,
+    "lookup-any-to-error": _lookup_any_to_error,
     "count-to-count-all": lambda d: _rewrite_expressions(
         d, lambda c: CallNode(function="count_all") if c.function == "count" else None
     ),
@@ -283,6 +330,8 @@ def run_mutations(
     spark_writer: str | None,
 ) -> dict[str, Any]:
     results: dict[str, Any] = {}
+    baseline = out / "baseline"
+    emitter.write(emitter.plan(doc), baseline)
     for name, mutate in MUTATIONS.items():
         mutated, sites = mutate(doc)
         if sites == 0:
@@ -290,12 +339,17 @@ def run_mutations(
             continue
         package = out / name / "package"
         emitter.write(emitter.plan(mutated), package)
+        if _same_code(baseline, package):
+            # Every mutated site is in a blocked dataflow: nothing observable changed.
+            results[name] = {"status": "not_applicable", "sites": 0}
+            continue
         run_dir = out / name / "run"
         bindings = _bindings(case, package, run_dir)
         execution = run_package(
             package,
             bindings,
             run_dir,
+            _params(case, run_dir),
             launcher=launcher,
             spark_writer=spark_writer,
             allow_partial=case.get("run", {}).get("allow_partial", False),
@@ -354,9 +408,7 @@ def run_benchmark(
             "expectation_checks_passed": count(
                 lambda r: all(c["ok"] for c in r["checks"].values()), rows
             ),
-            "execution_completed": count(
-                lambda r: r["execution"]["status"] in ("succeeded", "partial"), executed
-            ),
+            "execution_as_expected": count(lambda r: r["checks"]["execution"]["ok"], executed),
             "output_agreement": count(lambda r: r["comparison"]["status"] == "agree", compared),
             "mutations_detected": {
                 "count": sum(m["detected"] for m in mutated),

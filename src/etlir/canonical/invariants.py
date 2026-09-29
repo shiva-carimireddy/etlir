@@ -252,7 +252,7 @@ def _validate_dataflow(
 
     for op in df.operations:
         spec = op.spec
-        refs_ds = [getattr(spec, "dataset_id", None)]
+        refs_ds = [getattr(spec, "dataset_id", None)]  # read / write
         refs_expr: list[str] = []
         for attr in ("predicate_expression_id", "condition_expression_id"):
             value = getattr(spec, attr, None)
@@ -353,14 +353,15 @@ def _validate_columns(df: Dataflow, datasets: dict[str, Dataset]) -> list[Diagno
         if spec.kind != "write" and not op.outputs:
             out.append(_diag("IR-V-017", "No output groups declared.", op.id, op.source))
         cols = slot_columns(df, op.id, datasets)
-        if spec.kind == "join":
-            left, right = cols.get("left"), cols.get("right")
+        if spec.kind in ("join", "lookup"):
+            names = ("left", "right") if spec.kind == "join" else ("in", "lookup")
+            left, right = cols.get(names[0]), cols.get(names[1])
             overlap = {c.name for c in left} & {c.name for c in right} if left and right else set()
             if left is None or right is None or overlap:
                 out.append(
                     _diag(
                         "IR-V-016",
-                        "Join needs disjoint 'left' and 'right' inputs "
+                        f"{spec.kind} needs disjoint '{names[0]}' and '{names[1]}' inputs "
                         f"(overlap {sorted(overlap)}).",
                         op.id,
                         op.source,
@@ -392,6 +393,24 @@ def _validate_columns(df: Dataflow, datasets: dict[str, Dataset]) -> list[Diagno
             for group in op.outputs:
                 for c in group.columns:
                     if c.name not in assigned and c.name not in visible:
+                        out.append(
+                            _diag("IR-V-015", f"Output '{c.name}' has no source.", op.id, op.source)
+                        )
+        elif spec.kind == "lookup":
+            lookup_cols = {c.name for c in cols.get("lookup", [])}
+            in_cols = {c.name for c in cols.get("in", [])}
+            returned = set()
+            for m in spec.returns:
+                returned.add(m.to_column)
+                if m.from_column not in lookup_cols:
+                    out.append(
+                        _diag(
+                            "IR-V-015", f"Lookup has no column '{m.from_column}'.", op.id, op.source
+                        )
+                    )
+            for group in op.outputs:
+                for c in group.columns:
+                    if c.name not in returned and c.name not in in_cols:
                         out.append(
                             _diag("IR-V-015", f"Output '{c.name}' has no source.", op.id, op.source)
                         )
