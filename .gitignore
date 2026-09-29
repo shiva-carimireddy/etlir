@@ -24,3 +24,6 @@ private/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local agent instructions (kept private)
+CLAUDE.md
