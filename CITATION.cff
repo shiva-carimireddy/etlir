@@ -1,0 +1,36 @@
+# Citation metadata for ETLIR. GitHub renders this as "Cite this repository", and
+# Zenodo's GitHub integration reads it when archiving a release.
+# At each release: set `version` and `date-released`, and add the Zenodo DOI under
+# `identifiers`. Once the paper is published, add it as `preferred-citation`.
+cff-version: 1.2.0
+message: >-
+  If you use ETLIR, please cite the specific release you used, as listed below.
+type: software
+title: "ETLIR: A Canonical Intermediate Representation for Traceable ETL Modernization"
+version: 0.1.0
+date-released: "2026-09-28"
+abstract: >-
+  ETLIR is an open-source framework for translating legacy ETL definitions into modern
+  data platforms through a typed, versioned Canonical Intermediate Representation that
+  decouples source adapters from target emitters, preserves source provenance, and
+  reports target capability gaps explicitly. Its first reference pair translates a
+  documented subset of Informatica PowerCenter XML to Apache Spark, with DuckDB SQL as a
+  second target generated from the same Canonical IR.
+authors:
+  - family-names: Carimireddy
+    given-names: Shiva Kumar Reddy
+    email: shivacarimireddy@ieee.org
+    affiliation: Independent Researcher
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+repository-code: "https://github.com/shiva-carimireddy/etlir"
+url: "https://github.com/shiva-carimireddy/etlir"
+license: Apache-2.0
+keywords:
+  - ETL
+  - intermediate representation
+  - data engineering
+  - legacy modernization
+  - provenance
+  - Apache Spark
+  - Informatica PowerCenter
+  - DuckDB

@@ -1,0 +1,16 @@
+ETLIR
+Copyright 2026 Shiva Kumar Reddy Carimireddy and the ETLIR contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+ETLIR is an independent project and is not affiliated with, endorsed by, or sponsored
+by Informatica, the Apache Software Foundation, DuckDB, or any other vendor whose products or
+file formats it reads or targets. All product names and trademarks are the property of
+their respective owners and are used only to identify formats and platforms for
+interoperability.
+
+Third-party ETL definition files used for evaluation are not redistributed in this
+repository. See benchmarks/corpus.toml for provenance and licenses.
+
+The synthetic fixtures under benchmarks/cases/ are original works licensed under
+Apache-2.0.

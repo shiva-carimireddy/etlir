@@ -1,0 +1,5 @@
+{"CUSTOMER_ID": "1", "FULL_NAME": "Ada Lovelace", "COUNTRY_CODE": "GB", "IS_ACTIVE": "1", "LOAD_NOTE": null}
+{"CUSTOMER_ID": "2", "FULL_NAME": "Grace Hopper", "COUNTRY_CODE": "US", "IS_ACTIVE": "1", "LOAD_NOTE": null}
+{"CUSTOMER_ID": "3", "FULL_NAME": "Alan ", "COUNTRY_CODE": "GB", "IS_ACTIVE": "0", "LOAD_NOTE": null}
+{"CUSTOMER_ID": "4", "FULL_NAME": " ", "COUNTRY_CODE": "FR", "IS_ACTIVE": "1", "LOAD_NOTE": null}
+{"CUSTOMER_ID": "5", "FULL_NAME": "Edsger Dijkstra", "COUNTRY_CODE": "NL", "IS_ACTIVE": "0", "LOAD_NOTE": null}

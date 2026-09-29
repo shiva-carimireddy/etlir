@@ -1,0 +1,7 @@
+CUSTOMER_ID,FIRST_NAME,LAST_NAME,COUNTRY,STATUS
+1,"  Ada ",Lovelace,gb,A
+2,Grace,Hopper,us,a
+3,Alan,,gb,I
+4,,,fr,A
+,Nameless,Row,us,A
+5,Edsger,Dijkstra,nl,
