@@ -1,0 +1,22 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-lookups"
+title = "Connected lookup over duplicate keys, range lookup, SQL-override lookup, unconnected :LKP call, row-aligned merge"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/wf_enrich_orders.xml"]
+partition = "behaviorally-comparable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = ["PC-N-006"]
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:ORDERS2" = { format = "csv", path = "inputs/orders2.csv" }
+"bind:ETLIR_SYNTH:ETLIR_DEMO:lkp:CUSTOMER_DIM:LKP_CUST" = { format = "csv", path = "inputs/customer_dim.csv" }
+"bind:ETLIR_SYNTH:ETLIR_DEMO:lkp:RATE_BANDS:LKP_BAND" = { format = "csv", path = "inputs/rate_bands.csv" }
+"bind:ETLIR_SYNTH:ETLIR_DEMO:lkp:SEGMENT_DISCOUNT:LKP_SEGMENT_DISCOUNT" = { format = "csv", path = "inputs/segment_discount.csv" }
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:ORCL:REGION_MAP" = { format = "csv", path = "inputs/region_map.csv" }
+
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ORDER_ENRICHED" = "expected/order_enriched.jsonl"

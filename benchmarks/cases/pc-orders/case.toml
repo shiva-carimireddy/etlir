@@ -1,0 +1,24 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-orders"
+title = "Customer, order and revenue loads across two exports (expression, filter, router, joiner, aggregator)"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/mappings.xml", "source/wf_orders.xml"]
+partition = "behaviorally-comparable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = []
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:CUSTOMERS" = { format = "csv", path = "inputs/customers.csv" }
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:ORDERS" = { format = "csv", path = "inputs/orders.csv" }
+
+# Expected outputs were written by hand from the fixture's stated semantics, before any
+# emitter produced output (see README.md in this directory).
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:DIM_CUSTOMER" = "expected/dim_customer.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:FACT_ORDERS_HIGH" = "expected/fact_orders_high.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:FACT_ORDERS_STD" = "expected/fact_orders_std.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:CUSTOMER_REVENUE" = "expected/customer_revenue.jsonl"

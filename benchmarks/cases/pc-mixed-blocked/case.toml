@@ -1,0 +1,22 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-mixed-blocked"
+title = "Fail-closed behavior: a clean branch runs; a sequence generator, a non-row-aligned merge, a SELECT * override, a stateful variable, a command task and a custom link condition are blocked"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/wf_mixed.xml"]
+partition = "behaviorally-comparable"
+
+[run]
+# Blocked tasks never run; this runs the unaffected branch only.
+allow_partial = true
+
+[expect]
+blocked_tasks = ["cmd_ARCHIVE", "s_m_CUSTOMER_KEYS", "s_m_CUSTOMER_OVERRIDE", "s_m_NOT_ALIGNED"]
+diagnostic_codes = ["IR-V-010", "IR-V-012"]
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:CUSTOMERS" = { format = "csv", path = "inputs/customers.csv" }
+
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:CUSTOMER_COPY" = "expected/customer_copy.jsonl"
