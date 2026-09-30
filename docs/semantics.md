@@ -56,14 +56,46 @@ Expression nodes: `literal`, `column`, `parameter`, `call`, `cast`, `opaque`. Ev
 | `and` `or` `not` | SQL three-valued logic. |
 | `is_null` | Never NULL. |
 | `if(c, a, b)` | `a` when `c` is TRUE, otherwise `b` (a NULL condition selects `b`). |
+| `case(c1, v1, …, cn, vn, d)` | Value of the first TRUE condition, else `d` (NULL conditions are not TRUE). An odd number of at least 3 arguments. |
 | `coalesce` | First non-NULL argument. |
 | `concat(a, b, …)` | NULL arguments count as `''`; the result is NULL only if **every** argument is NULL. |
 | `upper` `lower` | NULL-strict. |
 | `ltrim` `rtrim` | NULL-strict; remove leading/trailing **spaces** only. |
 | `length` | NULL-strict; counts characters. |
 | `substr(s, start[, len])` | NULL-strict; 1-based; `start = 0` means 1; negative `start` counts from the end; a start before the first character is clamped to 1; missing `len` means to the end; `len ≤ 0` yields `''`. |
+| `sign(x)` | NULL-strict; -1, 0 or 1 (integer). |
+| `trunc(x, p)` / `round(x, p)` | NULL-strict; to `p ≥ 0` decimal places, toward zero / half away from zero; result has the type of `x`. |
+| `lpad(s, n, pad)` / `rpad(s, n, pad)` | NULL-strict; pad to `n` characters by repeating `pad` on the left/right; a longer `s` is cut to its first `n` characters; `n ≤ 0` yields `''`. |
+| `instr(s, sub, start)` | NULL-strict; 1-based position of the first occurrence of `sub` at or after `start ≥ 1`; 0 if none **or if `sub` is `''`**. |
+| `translate(s, from, to)` | NULL if `s` is NULL; each character of `from` becomes the character at the same position of `to`, or is removed when `to` is shorter. |
+| `replace(s, old, new)` / `replace_ci(…)` | NULL if `s` is NULL; every non-overlapping occurrence of `old`, left to right, case-sensitively / case-insensitively. |
+| `chr(n)` | NULL-strict; the ASCII character with code 1–127; NULL for any other code. |
+| `matches_number(s)` | NULL-strict; TRUE if `s` is optional spaces, optional sign, digits with an optional fraction (or a fraction alone), an optional exponent, optional spaces. |
+| `is_whitespace(s)` | NULL-strict; TRUE if `s` is non-empty and only space, tab, newline, carriage return, form feed or vertical tab. |
+| `leading_decimal(s, p)` | NULL if `s` is NULL; the value of the longest numeric prefix after leading spaces (sign, digits, optional fraction), **0 if there is none**, rounded half away from zero to `p` places. |
+| `to_string(x)` | NULL-strict; the decimal digits of a whole number (integer types, decimals with scale 0). |
+| `format_timestamp(t, f)` | NULL-strict; `t` formatted with `f`. |
+| `parse_timestamp(s, f)` | NULL if `s` is NULL; `s` must match `f` exactly (every field at its full width, a valid calendar date and time), **otherwise the task fails**. |
+| `can_parse_timestamp(s, f)` | NULL-strict; TRUE if `parse_timestamp(s, f)` would succeed. |
+| `trunc_timestamp(t, unit)` | NULL-strict; truncates to the start of the `year`, `month`, `day`, `hour` or `minute`. |
+| `add_interval(t, unit, n)` | NULL-strict; adds `n` units (`year` … `second`); month and year arithmetic keeps the day, clamped to the last day of the month. |
+| `timestamp_part(t, unit)` | NULL-strict; the `year`, `month`, `day`, `hour`, `minute` or `second` (integer). |
+| `fail(message)` | Fails the task with the message when evaluated (only rows that evaluate it). |
 | `sum` `min` `max` `avg` | Ignore NULLs; NULL when there is no non-NULL input. |
 | `count(x)` / `count_all()` | Non-NULL values / rows. |
+
+Arguments that fix the meaning of a call must be literals (invariant IR-V-014): the pad
+string of `lpad`/`rpad`, the start of `instr`, the character sets of `translate`, the
+strings of `replace`/`replace_ci`, the scale of `leading_decimal`, the places of
+`trunc`/`round`, formats and units, and the `fail` message.
+
+**Timestamp formats** are built from the tokens `YYYY` (4 digits), `MM`, `DD`, `HH24`, `MI`,
+`SS` (2 digits each) and the separators `- / : . T` and space, for example `YYYY-MM-DD`,
+`MM/DD/YYYY HH24:MI:SS` or `YYYYMMDD`. Nothing else is part of the canonical format language.
+
+**Built-in parameters.** A parameter with `builtin = "run_start_time"` has the run's start
+instant (UTC) as its value when the run does not set it; every task of a run sees the same
+instant (the reference runner sets it once per run).
 
 `opaque` holds unparsed source text with a reason. Its only capability is `blocked`.
 
@@ -97,3 +129,8 @@ Found by probing both engines and pinned by the `pc-expression-semantics` case:
 | "Any" match in a lookup | no built-in | no built-in | explicit ordered pick (`row_number` over the declared lookup columns) |
 | Failing on duplicate lookup matches | no built-in | no built-in | explicit check that raises (`count` / DuckDB `error()`) |
 | Decimal division result | decimal | double | result cast to the declared column type |
+| `instr`/`locate` with an empty needle | 1 at any position | position of the start | 0; explicit guard |
+| `chr` above 127 | code mod 256 | Unicode code point | NULL outside 1–127; explicit guard |
+| `signum` result type | double | tinyint | cast to integer |
+| Parsing `MM` from `1` | rejected | accepted | full-width fields only: a strict regular expression is checked before parsing |
+| Parsing an invalid string | error or NULL by function | error or NULL by function | the `try_` form plus an explicit `raise_error` / `error()` |

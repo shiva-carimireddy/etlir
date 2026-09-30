@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from etlir.canonical.functions import NUMERIC, common_type, result_type
+from etlir.canonical.functions import NUMERIC, common_type, parse_format, result_type
 from etlir.canonical.model import (
     CallNode,
     CastNode,
@@ -48,6 +48,34 @@ DIALECT = "powercenter"
 APPROXIMATION_NOTES = {
     "pc.expr.divide": "Division-by-zero behavior is taken from the canonical catalog "
     "(NULL); PowerCenter behavior was not verified against a live runtime.",
+    "pc.expr.sysdate": "SYSDATE is evaluated once, at run start; PowerCenter reads the clock "
+    "when the row is processed.",
+    "pc.expr.setvariable": "SETVARIABLE returns its value argument. The variable's final value "
+    "is not persisted between runs (supply the start value as a run parameter), and a NULL "
+    "value yields NULL where PowerCenter returns the variable's current value.",
+    "pc.expr.mapping-variable": "A mapping variable changed by SETVARIABLE is read as its start "
+    "value, supplied as a run parameter; ETLIR does not persist the final value.",
+    "pc.expr.to-date": "A string that does not match the date format fails the run; "
+    "PowerCenter rejects the row instead.",
+    "pc.expr.default-date-format": "The session date format is assumed to be the PowerCenter "
+    "default MM/DD/YYYY HH24:MI:SS.",
+    "pc.expr.to-number": "String-to-number conversion uses the documented rule (leading numeric "
+    "part, 0 if none); not verified against a live runtime.",
+    "pc.expr.abort-message": "ABORT with a computed message fails the run with a fixed message.",
+    "pc.expr.empty-output": "An output port with an empty expression yields NULL.",
+    "pc.expr.to-decimal-scale": "TO_DECIMAL without a scale is converted with 18 decimal places.",
+}
+
+DEFAULT_DATE_FORMAT = "MM/DD/YYYY HH24:MI:SS"
+
+# PowerCenter date format strings -> canonical time units (ADD_TO_DATE, GET_DATE_PART, TRUNC).
+_DATE_UNITS = {
+    **dict.fromkeys(("Y", "YY", "YYY", "YYYY"), "year"),
+    **dict.fromkeys(("MM", "MON", "MONTH"), "month"),
+    **dict.fromkeys(("D", "DD", "DDD", "DY", "DAY"), "day"),
+    **dict.fromkeys(("HH", "HH12", "HH24"), "hour"),
+    "MI": "minute",
+    "SS": "second",
 }
 
 
@@ -62,6 +90,8 @@ class Env:
     pending: set[str] = field(default_factory=set)
     parameters: dict[str, tuple[str, DataType]] = field(default_factory=dict)
     stateful: set[str] = field(default_factory=set)
+    # Built-in variables with a known value: SESSSTARTTIME, $PMMappingName, ... (upper case).
+    builtins: dict[str, tuple[ExpressionNode, DataType]] = field(default_factory=dict)
     allow_aggregates: bool = False
     group_keys: set[str] | None = None
     # Resolves an unconnected lookup call :LKP.name(args) to a column (see normalize).
@@ -211,7 +241,7 @@ class _Parser:
         if kind == "param":
             return ("param", val)
         if kind == "builtin":
-            raise Opaque(f"built-in variable {val} is not supported")
+            return ("builtin", val.upper())
         if kind == "external":
             if val.upper() != ":LKP.":
                 raise Opaque(f"{val[1:-1]} call (stored procedure or mapplet) is not supported")
@@ -242,7 +272,7 @@ class _Parser:
             if up in _KEYWORDS:
                 raise Opaque(f"unexpected keyword {val}")
             if up in _BUILTINS and not self.is_op("("):
-                raise Opaque(f"built-in {up} depends on the run time and is not supported")
+                return ("builtin", up)
             if self.is_op("("):
                 self.take()
                 args: list[Ast] = []
@@ -266,6 +296,16 @@ class _Parser:
 _T = DataType
 BOOL, STRING, INT = _T(kind=TypeKind.BOOLEAN), _T(kind=TypeKind.STRING), _T(kind=TypeKind.INTEGER)
 UNKNOWN = _T(kind=TypeKind.UNKNOWN)
+TIMESTAMP = _T(kind=TypeKind.TIMESTAMP)
+INTEGRAL = (TypeKind.INTEGER, TypeKind.BIGINT)
+
+
+def _whole(t: DataType) -> bool:
+    """Integer types, and decimals declared with scale 0 (their text form is exact)."""
+    return t.kind in INTEGRAL or (
+        t.kind is TypeKind.DECIMAL and t.precision is not None and not t.scale
+    )
+
 
 _ARITH = {"+": "add", "-": "subtract", "*": "multiply", "/": "divide"}
 _CMP = {"=": "eq", "<>": "ne", "!=": "ne", "^=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
@@ -277,6 +317,14 @@ Typed = tuple[ExpressionNode, DataType]
 
 def _is_null_literal(t: Typed) -> bool:
     return isinstance(t[0], LiteralNode) and t[0].value is None
+
+
+def _lit(value: Any, typ: DataType) -> Typed:
+    return LiteralNode(value=value, type=typ), typ
+
+
+def _null() -> Typed:
+    return _lit(None, UNKNOWN)
 
 
 class _Converter:
@@ -309,7 +357,72 @@ class _Converter:
     def as_str(self, t: Typed) -> Typed:
         if t[1].kind is TypeKind.STRING or _is_null_literal(t):
             return t
+        if _whole(t[1]):  # whole numbers convert to their decimal digits
+            return self.call("to_string", t)
         raise Opaque(f"{t[1].kind.value} value used as a string (implicit conversion)")
+
+    def as_ts(self, t: Typed, fn: str) -> Typed:
+        if t[1].kind in (TypeKind.TIMESTAMP, TypeKind.DATE) or _is_null_literal(t):
+            return t
+        raise Opaque(f"{fn} expects a date, got {t[1].kind.value}")
+
+    def str_literal(self, a: Ast, what: str) -> str | None:
+        t = self.conv(a)
+        if _is_null_literal(t):
+            return None
+        if (
+            isinstance(t[0], LiteralNode)
+            and isinstance(t[0].value, str)
+            and t[1].kind is TypeKind.STRING
+        ):
+            return t[0].value
+        raise Opaque(f"{what} must be a string literal")
+
+    def int_literal(self, a: Ast, what: str) -> int:
+        t = self.conv(a)
+        value = t[0].value if isinstance(t[0], LiteralNode) else None
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int) and t[1].kind in INTEGRAL:
+            return value
+        raise Opaque(f"{what} must be an integer literal")
+
+    def date_format(self, a: Ast | None, fn: str) -> str:
+        if a is None:
+            self.notes.add("pc.expr.default-date-format")
+            return DEFAULT_DATE_FORMAT
+        fmt = self.str_literal(a, f"{fn} format")
+        if fmt is None or parse_format(fmt.upper()) is None:
+            raise Opaque(f"{fn} format {fmt!r} is not supported")
+        return fmt.upper()
+
+    def date_unit(self, a: Ast, fn: str) -> Typed:
+        fmt = self.str_literal(a, f"{fn} format")
+        unit = _DATE_UNITS.get((fmt or "").upper())
+        if unit is None:
+            raise Opaque(f"{fn} format {fmt!r} is not supported")
+        return _lit(unit, STRING)
+
+    def branches(self, values: list[Typed], fn: str) -> list[Typed]:
+        """Result values of IIF/DECODE: booleans mix with numbers as 1/0; NULL literals and
+        fail() calls take the other branches' type; otherwise the types must agree."""
+        kinds = {v[1].kind for v in values}
+        if TypeKind.BOOLEAN in kinds and kinds & set(NUMERIC):
+            values = [self.as_num(v) for v in values]
+        known = [v[1] for v in values if v[1].kind is not TypeKind.UNKNOWN]
+        if known and common_type(known).kind is TypeKind.UNKNOWN:
+            shown = ", ".join(sorted({t.kind.value for t in known}))
+            raise Opaque(f"{fn} results differ ({shown})")
+        return values
+
+    @staticmethod
+    def default_for(t: Typed) -> Typed:
+        """IIF without an else value returns 0, '' or NULL depending on the then-value type."""
+        if t[1].kind in NUMERIC:
+            return _lit(0, INT)
+        if t[1].kind is TypeKind.STRING:
+            return _lit("", STRING)
+        return _null()
 
     def conv(self, a: Ast) -> Typed:
         tag = a[0]
@@ -326,7 +439,7 @@ class _Converter:
         if tag == "param":
             key = a[1][2:].upper()
             if key in self.env.stateful:
-                raise Opaque(f"mapping variable {a[1]} carries state between runs")
+                self.notes.add("pc.expr.mapping-variable")
             if key not in self.env.parameters:
                 raise Opaque(f"parameter {a[1]} is not declared in the mapping")
             pid, ptype = self.env.parameters[key]
@@ -339,11 +452,22 @@ class _Converter:
             return self.binary(a[1], a[2], a[3])
         if tag == "call":
             return self.function(a[1], a[2])
+        if tag == "builtin":
+            return self.builtin(a[1])
         if tag == "lkp":
             if self.env.lookup_call is None or self.in_agg:
                 raise Opaque("unconnected lookup call is not supported here")
             return self.env.lookup_call(a[1], [self.conv(x) for x in a[2]])
         raise Opaque(f"unsupported syntax {tag}")
+
+    def builtin(self, name: str) -> Typed:
+        if name in self.env.builtins:
+            if name == "SYSDATE":
+                self.notes.add("pc.expr.sysdate")
+            return self.env.builtins[name]
+        if name.startswith("$"):
+            raise Opaque(f"built-in variable {name} is not supported")
+        raise Opaque(f"built-in {name} depends on the run time and is not supported")
 
     def number(self, text: str) -> Typed:
         if "." not in text:
@@ -446,40 +570,321 @@ class _Converter:
 
     def function(self, name: str, args: list[Ast]) -> Typed:
         n = len(args)
-        if name == "IIF":
-            if n != 3:
-                raise Opaque("IIF without an explicit else value is not supported")
-            cond = self.as_bool(self.conv(args[0]))
-            a, b = self.conv(args[1]), self.conv(args[2])
-            if {a[1].kind, b[1].kind} & {TypeKind.BOOLEAN} and {a[1].kind, b[1].kind} & set(
-                NUMERIC
-            ):
-                a, b = self.as_num(a), self.as_num(b)
-            if common_type([a[1], b[1]]).kind is TypeKind.UNKNOWN and not (
-                _is_null_literal(a) or _is_null_literal(b)
-            ):
-                raise Opaque(f"IIF branches differ ({a[1].kind.value}, {b[1].kind.value})")
-            return self.call("if", cond, a, b)
-        if name == "ISNULL" and n == 1:
-            return self.call("is_null", self.conv(args[0]))
+        handler = getattr(self, f"fn_{name.lower()}", None)
+        if handler is not None and re.fullmatch(r"[A-Z_]+", name):
+            result: Typed | None = handler(args)
+            if result is not None:
+                return result
         if name in _STRING_FNS and n == 1:
             return self.call(_STRING_FNS[name], self.as_str(self.conv(args[0])))
-        if name == "LENGTH" and n == 1:
-            return self.call("length", self.as_str(self.conv(args[0])))
-        if name == "CONCAT" and n == 2:
-            return self.call("concat", *(self.as_str(self.conv(x)) for x in args))
-        if name == "SUBSTR" and n in (2, 3):
-            s = self.as_str(self.conv(args[0]))
-            nums = [self.as_num(self.conv(x)) for x in args[1:]]
-            for t in nums:
-                if t[1].kind not in (TypeKind.INTEGER, TypeKind.BIGINT, TypeKind.UNKNOWN):
-                    raise Opaque("SUBSTR position/length must be integers")
-            return self.call("substr", s, *nums)
-        if name == "ABS" and n == 1:
-            return self.call("abs", self.as_num(self.conv(args[0])))
         if name in _AGGS or name == "COUNT*":
             return self.aggregate(name, args)
         raise Opaque(f"function {name}/{n} is not in the supported subset")
+
+    # Each fn_<NAME> returns None when the call shape is outside the supported subset.
+
+    def fn_iif(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (2, 3):
+            return None
+        cond = self.as_bool(self.conv(args[0]))
+        then = self.conv(args[1])
+        other = self.conv(args[2]) if len(args) == 3 else self.default_for(then)
+        then, other = self.branches([then, other], "IIF")
+        return self.call("if", cond, then, other)
+
+    def fn_decode(self, args: list[Ast]) -> Typed | None:
+        if len(args) < 3:
+            return None
+        rest = list(args[1:])
+        default = self.conv(rest.pop()) if len(rest) % 2 else _null()
+        conditional = args[0] == ("bool", True)  # DECODE(TRUE, cond1, value1, ...)
+        value = None if conditional else self.conv(args[0])
+        conds: list[Typed] = []
+        results: list[Typed] = []
+        for search_ast, result_ast in zip(rest[0::2], rest[1::2], strict=True):
+            if value is None:
+                conds.append(self.as_bool(self.conv(search_ast)))
+            else:
+                search = self.conv(search_ast)
+                if _is_null_literal(search):
+                    raise Opaque("DECODE with a NULL search value (NULL matching is unverified)")
+                conds.append(self.call("eq", *self.comparable(value, search)))
+            results.append(self.conv(result_ast))
+        *results, default = self.branches([*results, default], "DECODE")
+        flat = [x for pair in zip(conds, results, strict=True) for x in pair]
+        return self.call("case", *flat, default)
+
+    def fn_in(self, args: list[Ast]) -> Typed | None:
+        if len(args) < 2:
+            return None
+        value = self.conv(args[0])
+        items = [self.conv(x) for x in args[1:]]
+        ignore_case = False
+        last = items[-1]
+        if (
+            value[1].kind is TypeKind.STRING
+            and len(items) >= 2
+            and isinstance(last[0], LiteralNode)
+            and last[1].kind in INTEGRAL
+        ):
+            ignore_case = last[0].value == 0
+            items = items[:-1]
+        elif value[1].kind is TypeKind.STRING and any(
+            not isinstance(i[0], LiteralNode) or re.search(r"[A-Za-z]", str(i[0].value))
+            for i in items
+        ):
+            raise Opaque("IN on letters without a CaseFlag (default case sensitivity unverified)")
+        terms: list[Typed] = []
+        for item in items:
+            if _is_null_literal(item):
+                raise Opaque("IN list containing NULL")
+            lt, rt = self.comparable(value, item)
+            if ignore_case:
+                lt, rt = self.call("upper", lt), self.call("upper", rt)
+            terms.append(self.call("eq", lt, rt))
+        out = terms[0]
+        for t in terms[1:]:
+            out = self.call("or", out, t)
+        return out
+
+    def fn_isnull(self, args: list[Ast]) -> Typed | None:
+        return self.call("is_null", self.conv(args[0])) if len(args) == 1 else None
+
+    def fn_length(self, args: list[Ast]) -> Typed | None:
+        return self.call("length", self.as_str(self.conv(args[0]))) if len(args) == 1 else None
+
+    def fn_concat(self, args: list[Ast]) -> Typed | None:
+        if len(args) != 2:
+            return None
+        return self.call("concat", *(self.as_str(self.conv(x)) for x in args))
+
+    def fn_substr(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (2, 3):
+            return None
+        s = self.as_str(self.conv(args[0]))
+        nums = [self.as_num(self.conv(x)) for x in args[1:]]
+        for t in nums:
+            if t[1].kind not in (*INTEGRAL, TypeKind.UNKNOWN):
+                raise Opaque("SUBSTR position/length must be integers")
+        return self.call("substr", s, *nums)
+
+    def fn_abs(self, args: list[Ast]) -> Typed | None:
+        return self.call("abs", self.as_num(self.conv(args[0]))) if len(args) == 1 else None
+
+    def fn_sign(self, args: list[Ast]) -> Typed | None:
+        return self.call("sign", self.as_num(self.conv(args[0]))) if len(args) == 1 else None
+
+    def _pad(self, fn: str, args: list[Ast]) -> Typed | None:
+        if len(args) not in (2, 3):
+            return None
+        s = self.as_str(self.conv(args[0]))
+        length = self.as_num(self.conv(args[1]))
+        if length[1].kind not in (*INTEGRAL, TypeKind.UNKNOWN):
+            raise Opaque(f"{fn.upper()} length must be an integer")
+        fill = self.str_literal(args[2], f"{fn.upper()} pad string") if len(args) == 3 else " "
+        if not fill:
+            raise Opaque(f"{fn.upper()} with an empty or NULL pad string")
+        return self.call(fn, s, length, _lit(fill, STRING))
+
+    def fn_lpad(self, args: list[Ast]) -> Typed | None:
+        return self._pad("lpad", args)
+
+    def fn_rpad(self, args: list[Ast]) -> Typed | None:
+        return self._pad("rpad", args)
+
+    def fn_instr(self, args: list[Ast]) -> Typed | None:
+        if not 2 <= len(args) <= 4:
+            return None
+        s, search = self.as_str(self.conv(args[0])), self.as_str(self.conv(args[1]))
+        start = self.int_literal(args[2], "INSTR start") if len(args) > 2 else 1
+        if start < 1:
+            raise Opaque("INSTR with a start position below 1 (backward search)")
+        if len(args) == 4 and self.int_literal(args[3], "INSTR occurrence") != 1:
+            raise Opaque("INSTR occurrence other than 1")
+        return self.call("instr", s, search, _lit(start, INT))
+
+    def fn_replacechr(self, args: list[Ast]) -> Typed | None:
+        if len(args) != 4:
+            return None
+        case_sensitive = self.int_literal(args[0], "REPLACECHR CaseFlag") != 0
+        s = self.as_str(self.conv(args[1]))
+        old = self.str_literal(args[2], "REPLACECHR OldCharSet")
+        new = self.str_literal(args[3], "REPLACECHR NewChar") or ""
+        if not old:
+            return s
+        chars: list[str] = []
+        for c in old:
+            for variant in (c,) if case_sensitive else (c, c.lower(), c.upper()):
+                if variant not in chars:
+                    chars.append(variant)
+        to = new[:1] * len(chars)
+        return self.call("translate", s, _lit("".join(chars), STRING), _lit(to, STRING))
+
+    def fn_replacestr(self, args: list[Ast]) -> Typed | None:
+        if len(args) < 4:
+            return None
+        if len(args) > 4:
+            raise Opaque("REPLACESTR with several search strings")
+        case_sensitive = self.int_literal(args[0], "REPLACESTR CaseFlag") != 0
+        s = self.as_str(self.conv(args[1]))
+        old = self.str_literal(args[2], "REPLACESTR OldString")
+        new = self.str_literal(args[3], "REPLACESTR NewString") or ""
+        if not old:
+            return s
+        fn = "replace" if case_sensitive else "replace_ci"
+        return self.call(fn, s, _lit(old, STRING), _lit(new, STRING))
+
+    def fn_chr(self, args: list[Ast]) -> Typed | None:
+        return self.call("chr", self.as_num(self.conv(args[0]))) if len(args) == 1 else None
+
+    def fn_is_number(self, args: list[Ast]) -> Typed | None:
+        if len(args) != 1:
+            return None
+        return self.call("matches_number", self.as_str(self.conv(args[0])))
+
+    def fn_is_spaces(self, args: list[Ast]) -> Typed | None:
+        if len(args) != 1:
+            return None
+        return self.call("is_whitespace", self.as_str(self.conv(args[0])))
+
+    def fn_is_date(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (1, 2):
+            return None
+        s = self.as_str(self.conv(args[0]))
+        fmt = self.date_format(args[1] if len(args) == 2 else None, "IS_DATE")
+        return self.call("can_parse_timestamp", s, _lit(fmt, STRING))
+
+    def fn_to_date(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (1, 2):
+            return None
+        value = self.conv(args[0])
+        if value[1].kind in (TypeKind.TIMESTAMP, TypeKind.DATE):
+            return value
+        s = self.as_str(value)
+        fmt = self.date_format(args[1] if len(args) == 2 else None, "TO_DATE")
+        self.notes.add("pc.expr.to-date")
+        return self.call("parse_timestamp", s, _lit(fmt, STRING))
+
+    def fn_to_char(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (1, 2):
+            return None
+        value = self.conv(args[0])
+        kind = value[1].kind
+        if kind in (TypeKind.TIMESTAMP, TypeKind.DATE):
+            fmt = self.date_format(args[1] if len(args) == 2 else None, "TO_CHAR")
+            return self.call("format_timestamp", value, _lit(fmt, STRING))
+        if len(args) == 2:
+            raise Opaque(f"TO_CHAR with a format on a {kind.value} value")
+        if kind is TypeKind.STRING or _is_null_literal(value):
+            return value
+        if _whole(value[1]):
+            return self.call("to_string", value)
+        raise Opaque(f"TO_CHAR of a {kind.value} value (number formatting unverified)")
+
+    def fn_to_decimal(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (1, 2):
+            return None
+        if len(args) == 2:
+            scale = self.int_literal(args[1], "TO_DECIMAL scale")
+        else:
+            scale = 18
+            self.notes.add("pc.expr.to-decimal-scale")
+        if not 0 <= scale <= 18:
+            raise Opaque("TO_DECIMAL scale outside 0..18")
+        target = _T(kind=TypeKind.DECIMAL, precision=38, scale=scale)
+        value = self.conv(args[0])
+        if value[1].kind is TypeKind.STRING:
+            self.notes.add("pc.expr.to-number")
+            number = self.call("leading_decimal", value, _lit(scale, INT))
+        elif value[1].kind in NUMERIC:
+            number = self.call("round", value, _lit(scale, INT))
+        elif _is_null_literal(value):
+            return _lit(None, target)
+        else:
+            raise Opaque(f"TO_DECIMAL of a {value[1].kind.value} value")
+        return CastNode(to=target, arg=number[0]), target
+
+    def fn_to_integer(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (1, 2):
+            return None
+        truncate = len(args) == 2 and self.int_literal(args[1], "TO_INTEGER flag") != 0
+        value = self.conv(args[0])
+        if value[1].kind is TypeKind.STRING:
+            self.notes.add("pc.expr.to-number")
+            value = self.call("leading_decimal", value, _lit(18, INT))
+        elif _is_null_literal(value):
+            return _lit(None, INT)
+        elif value[1].kind not in NUMERIC:
+            raise Opaque(f"TO_INTEGER of a {value[1].kind.value} value")
+        if value[1].kind in INTEGRAL:
+            return CastNode(to=INT, arg=value[0]), INT
+        if truncate:
+            value = self.call("trunc", value, _lit(0, INT))
+        return CastNode(to=INT, arg=value[0]), INT  # canonical casts round half away from 0
+
+    def fn_trunc(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (1, 2):
+            return None
+        value = self.conv(args[0])
+        if value[1].kind in (TypeKind.TIMESTAMP, TypeKind.DATE):
+            unit = self.date_unit(args[1], "TRUNC") if len(args) == 2 else _lit("day", STRING)
+            return self.call("trunc_timestamp", value, unit)
+        value = self.as_num(value)
+        places = self.int_literal(args[1], "TRUNC precision") if len(args) == 2 else 0
+        if places < 0:
+            raise Opaque("TRUNC with a negative precision")
+        return self.call("trunc", value, _lit(places, INT))
+
+    def fn_round(self, args: list[Ast]) -> Typed | None:
+        if len(args) not in (1, 2):
+            return None
+        value = self.conv(args[0])
+        if value[1].kind in (TypeKind.TIMESTAMP, TypeKind.DATE):
+            raise Opaque("ROUND of a date")
+        value = self.as_num(value)
+        places = self.int_literal(args[1], "ROUND precision") if len(args) == 2 else 0
+        if places < 0:
+            raise Opaque("ROUND with a negative precision")
+        return self.call("round", value, _lit(places, INT))
+
+    def fn_add_to_date(self, args: list[Ast]) -> Typed | None:
+        if len(args) != 3:
+            return None
+        date = self.as_ts(self.conv(args[0]), "ADD_TO_DATE")
+        unit = self.date_unit(args[1], "ADD_TO_DATE")
+        amount = self.as_num(self.conv(args[2]))
+        if amount[1].kind not in (*INTEGRAL, TypeKind.UNKNOWN):
+            raise Opaque("ADD_TO_DATE with a fractional amount")
+        return self.call("add_interval", date, unit, amount)
+
+    def fn_get_date_part(self, args: list[Ast]) -> Typed | None:
+        if len(args) != 2:
+            return None
+        date = self.as_ts(self.conv(args[0]), "GET_DATE_PART")
+        return self.call("timestamp_part", date, self.date_unit(args[1], "GET_DATE_PART"))
+
+    def fn_abort(self, args: list[Ast]) -> Typed | None:
+        if len(args) != 1:
+            return None
+        text = self.conv(args[0])
+        if isinstance(text[0], LiteralNode) and isinstance(text[0].value, str):
+            message = text[0].value
+        else:
+            self.notes.add("pc.expr.abort-message")
+            message = "ABORT (message computed at run time in the source)"
+        return self.call("fail", _lit(message, STRING))
+
+    def fn_setvariable(self, args: list[Ast]) -> Typed | None:
+        if len(args) != 2:
+            return None
+        if args[0][0] != "param":
+            raise Opaque("SETVARIABLE target must be a mapping variable")
+        self.conv(args[0])  # must be declared
+        value = self.conv(args[1])
+        if _is_null_literal(value):
+            raise Opaque("SETVARIABLE with NULL returns the variable's current value (stateful)")
+        self.notes.add("pc.expr.setvariable")
+        return value
 
     def aggregate(self, name: str, args: list[Ast]) -> Typed:
         if not self.env.allow_aggregates:

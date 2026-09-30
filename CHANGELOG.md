@@ -5,6 +5,32 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/). The Canonical IR has its own version; see
 [ADR-0004](docs/decisions/0004-versioning-and-compatibility.md).
 
+## [Unreleased]
+
+### Added
+
+- Canonical function catalog: `case`, `sign`, `trunc`, `round`, `lpad`, `rpad`, `instr`,
+  `translate`, `replace`, `replace_ci`, `chr`, `matches_number`, `is_whitespace`,
+  `leading_decimal`, `to_string`, `format_timestamp`, `parse_timestamp`,
+  `can_parse_timestamp`, `trunc_timestamp`, `add_interval`, `timestamp_part`, `fail`, with
+  lowerings in both targets and engine differences resolved explicitly
+  (docs/semantics.md). Arguments that fix a call's meaning must be literals (IR-V-014).
+- Built-in parameters (`Parameter.builtin = "run_start_time"`): the runner gives every task
+  of a run the same start instant.
+- PowerCenter: `DECODE`, two-argument `IIF`, `IN`, `SIGN`, `LPAD`/`RPAD`, `INSTR`,
+  `REPLACECHR`/`REPLACESTR`, `CHR`, `IS_NUMBER`, `IS_SPACES`, `IS_DATE`, `TO_DATE`,
+  `TO_CHAR`, `TO_DECIMAL`, `TO_INTEGER`, `TRUNC`, `ROUND`, `ADD_TO_DATE`, `GET_DATE_PART`,
+  `ABORT`, `SETVARIABLE`, `SESSSTARTTIME`, `SYSDATE`, `$PM…` names, mapping variables as run
+  parameters, empty output expressions, whole numbers into string ports.
+- Benchmark case `pc-function-semantics`: a hand-derived truth table for the new functions
+  on every target.
+
+### Fixed
+
+- NULL literals were serialized without a value and could not be read back.
+- A variable port that reads its own previous value is reported as stateful, not as an
+  unknown port.
+
 ## [0.1.0] - 2026-09-28
 
 First release: PowerCenter XML → Canonical IR → Spark and DuckDB, end to end, for a

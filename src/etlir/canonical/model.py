@@ -83,7 +83,9 @@ class Column(_Model):
 class LiteralNode(_Model):
     node: Literal["literal"] = "literal"
     value: str | int | bool | None = Field(
-        description="Literal value. Decimals and timestamps are encoded as strings."
+        default=None,
+        description="Literal value (absent or null for NULL). Decimals and timestamps are "
+        "encoded as strings.",
     )
     type: DataType
 
@@ -426,6 +428,11 @@ class Parameter(_Model):
     type: DataType
     default: str | None = Field(default=None, description="Never populated for sensitive values.")
     sensitive: bool = False
+    builtin: Literal["run_start_time"] | None = Field(
+        default=None,
+        description="Value supplied by the runtime when the run does not set it: "
+        "run_start_time is the run's start instant (UTC), identical for every task of a run.",
+    )
     source: SourceRef
 
 

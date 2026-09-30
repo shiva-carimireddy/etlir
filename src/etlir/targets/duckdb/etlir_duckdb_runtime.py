@@ -8,7 +8,9 @@ each target relation as JSON Lines. Depends only on the ``duckdb`` package.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
+import os
 import shutil
 import sys
 import traceback
@@ -31,6 +33,9 @@ def _lit(value: str) -> str:
 def _path(bindings_file: Path, binding: dict[str, Any]) -> Path:
     p = Path(binding["path"])
     return p if p.is_absolute() else (bindings_file.parent / p).resolve()
+
+
+_JOB_START = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def run(job: dict[str, Any]) -> None:
@@ -72,6 +77,8 @@ def run(job: dict[str, Any]) -> None:
                 value = params[pid]
             elif pid in job["defaults"]:
                 value = job["defaults"][pid]
+            elif job.get("builtins", {}).get(pid) == "run_start_time":
+                value = os.environ.get("ETLIR_RUN_START_TIME") or _JOB_START
             else:
                 raise KeyError(f"parameter '{pid}' has no value and no default")
             con.execute(f"SET VARIABLE {var} = CAST({_lit(str(value))} AS {sql_type})")

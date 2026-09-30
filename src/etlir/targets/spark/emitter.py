@@ -14,8 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from etlir import __version__ as _etlir_version
+from etlir.canonical.functions import format_regex, parse_format
 from etlir.canonical.model import (
     IR_VERSION,
+    CallNode,
     CanonicalDocument,
     CastNode,
     ColumnRefNode,
@@ -77,12 +79,34 @@ _SUPPORTED = [
             "is_null",
             "if",
             "coalesce",
+            "case",
             "upper",
             "lower",
             "ltrim",
             "rtrim",
             "length",
             "substr",
+            "sign",
+            "lpad",
+            "rpad",
+            "instr",
+            "translate",
+            "replace",
+            "replace_ci",
+            "chr",
+            "matches_number",
+            "is_whitespace",
+            "leading_decimal",
+            "to_string",
+            "format_timestamp",
+            "parse_timestamp",
+            "can_parse_timestamp",
+            "trunc",
+            "round",
+            "trunc_timestamp",
+            "add_interval",
+            "timestamp_part",
+            "fail",
             "sum",
             "count",
             "count_all",
@@ -219,6 +243,11 @@ def lower(
         "not": lambda: f"(~{args[0]})",
         "is_null": lambda: f"{args[0]}.isNull()",
         "if": lambda: f"F.when({args[0]}, {args[1]}).otherwise({args[2]})",
+        "case": lambda: (
+            "F"
+            + "".join(f".when({c}, {v})" for c, v in zip(args[:-1:2], args[1:-1:2], strict=True))
+            + f".otherwise({args[-1]})"
+        ),
         "coalesce": lambda: f"F.coalesce({', '.join(args)})",
         "concat": lambda: f"rt.concat({', '.join(args)})",
         "substr": lambda: f"rt.substr({', '.join(args)})",
@@ -226,6 +255,90 @@ def lower(
     }
     if fn in simple:
         return simple[fn]()
+    return _extended(node, args, [infer(a, env, penv) for a in node.args])
+
+
+def _literal(node: CallNode, i: int) -> Any:
+    arg = node.args[i]
+    if not isinstance(arg, LiteralNode) or arg.value is None:
+        raise Unlowerable(f"{node.function} argument {i + 1} must be a non-NULL literal")
+    return arg.value
+
+
+_SPARK_FORMAT = {"YYYY": "yyyy", "MM": "MM", "DD": "dd", "HH24": "HH", "MI": "mm", "SS": "ss"}
+_UNIT_PART = {
+    "year": "F.year",
+    "month": "F.month",
+    "day": "F.dayofmonth",
+    "hour": "F.hour",
+    "minute": "F.minute",
+    "second": "F.second",
+}
+_INTERVAL_ARG = {
+    "year": "years",
+    "month": "months",
+    "day": "days",
+    "hour": "hours",
+    "minute": "mins",
+    "second": "secs",
+}
+
+
+def _format(fmt: str) -> tuple[str, str]:
+    """Canonical timestamp format -> (Spark datetime pattern, strict match regex)."""
+    tokens = parse_format(fmt)
+    if tokens is None:
+        raise Unlowerable(f"timestamp format {fmt!r} is outside the canonical token set")
+    pattern = "".join(_SPARK_FORMAT.get(t, "'T'" if t == "T" else t) for t in tokens)
+    return pattern, format_regex(tokens)
+
+
+def _unit(node: CallNode, i: int) -> str:
+    unit = str(_literal(node, i))
+    if unit not in _UNIT_PART:
+        raise Unlowerable(f"unknown time unit {unit!r}")
+    return unit
+
+
+def _extended(node: CallNode, args: list[str], arg_types: list[DataType]) -> str:
+    fn = node.function
+    if fn == "sign":
+        return f"F.signum({args[0]}).cast('int')"
+    if fn in ("lpad", "rpad"):
+        return f"rt.pad({args[0]}, {args[1]}, {_literal(node, 2)!r}, left={fn == 'lpad'})"
+    if fn == "instr":
+        return f"rt.instr({args[0]}, {args[1]}, {int(_literal(node, 2))})"
+    if fn == "translate":
+        return f"F.translate({args[0]}, {_literal(node, 1)!r}, {_literal(node, 2)!r})"
+    if fn in ("replace", "replace_ci"):
+        old, new = _literal(node, 1), _literal(node, 2)
+        return f"rt.replace({args[0]}, {old!r}, {new!r}, ignore_case={fn == 'replace_ci'})"
+    if fn in ("chr", "matches_number", "is_whitespace"):
+        helper = "chr_ascii" if fn == "chr" else fn
+        return f"rt.{helper}({args[0]})"
+    if fn == "leading_decimal":
+        return f"rt.leading_decimal({args[0]}, {int(_literal(node, 1))})"
+    if fn == "to_string":
+        return f"({args[0]}).cast('string')"
+    if fn == "format_timestamp":
+        return f"F.date_format({args[0]}, {_format(_literal(node, 1))[0]!r})"
+    if fn in ("parse_timestamp", "can_parse_timestamp"):
+        pattern, regex = _format(_literal(node, 1))
+        return f"rt.{fn}({args[0]}, {pattern!r}, {regex!r})"
+    if fn in ("trunc", "round"):
+        places = int(_literal(node, 1))
+        st = spark_type(arg_types[0])
+        helper = "F.round" if fn == "round" else "rt.trunc_decimal"
+        body = f"{helper}({args[0]}, {places})"
+        return f"({body}).cast({st!r})" if st else body
+    if fn == "trunc_timestamp":
+        return f"F.date_trunc({_unit(node, 1)!r}, {args[0]})"
+    if fn == "add_interval":
+        return f"({args[0]} + F.make_interval({_INTERVAL_ARG[_unit(node, 1)]}={args[2]}))"
+    if fn == "timestamp_part":
+        return f"{_UNIT_PART[_unit(node, 1)]}({args[0]}).cast('int')"
+    if fn == "fail":
+        return f"F.raise_error(F.lit({str(_literal(node, 0))!r}))"
     raise Unlowerable(f"function {fn}")
 
 
@@ -268,6 +381,7 @@ class _Job:
     def render(self) -> str:
         params = {p.id: spark_type(p.type) for p in self.doc.parameters}
         defaults = {p.id: p.default for p in self.doc.parameters if p.default is not None}
+        builtins = {p.id: p.builtin for p in self.doc.parameters if p.builtin}
         src = self.df.source
         header = [
             f"# Generated by ETLIR {_etlir_version} (target {TARGET_ID}, Canonical IR "
@@ -290,6 +404,7 @@ class _Job:
             f"DATAFLOW_ID = {self.df.id!r}",
             f"PARAM_TYPES = {params!r}",
             f"PARAM_DEFAULTS = {defaults!r}",
+            f"PARAM_BUILTINS = {builtins!r}",
             "",
             "",
             "def run(spark, ctx):",
@@ -302,7 +417,7 @@ class _Job:
                 "",
                 "",
                 'if __name__ == "__main__":',
-                "    rt.main(run, DATAFLOW_ID, PARAM_DEFAULTS)",
+                "    rt.main(run, DATAFLOW_ID, PARAM_DEFAULTS, PARAM_BUILTINS)",
                 "",
             ]
         )

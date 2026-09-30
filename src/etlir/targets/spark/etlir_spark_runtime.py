@@ -36,6 +36,7 @@ class Context:
             json.loads(params_path.read_text("utf-8")) if params_path else {}
         )
         self.defaults: dict[str, Any] = {}
+        self.builtins: dict[str, str] = {}
 
     def binding(self, binding_id: str) -> dict[str, Any]:
         if binding_id not in self.bindings:
@@ -57,11 +58,21 @@ def col(name: str) -> Column:
     return F.col("`" + name.replace("`", "``") + "`")
 
 
+def run_start_time() -> str:
+    """The run's start instant: set once per run by the runner, else this job's start."""
+    return os.environ.get("ETLIR_RUN_START_TIME") or _JOB_START
+
+
+_JOB_START = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def param(ctx: Context, parameter_id: str, spark_type: str | None) -> Column:
     if parameter_id in ctx.params:
         value = ctx.params[parameter_id]
     elif parameter_id in ctx.defaults:
         value = ctx.defaults[parameter_id]
+    elif ctx.builtins.get(parameter_id) == "run_start_time":
+        value = run_start_time()
     else:
         raise KeyError(f"parameter '{parameter_id}' has no value and no default")
     lit = F.lit(value)
@@ -87,6 +98,78 @@ def substr(s: Column, start: Column, length: Column | None = None) -> Column:
         .when(ln <= 0, F.lit(""))
         .otherwise(s.substr(pos, ln))
     )
+
+
+_PUNCT = set(r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~""")
+NUMBER_REGEX = r"^ *[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)? *$"
+LEADING_NUMBER_REGEX = r"^ *([+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+))"
+WHITESPACE_REGEX = r"^[ \t\n\r\f\x0B]+$"
+
+
+def pad(s: Column, n: Column, fill: str, left: bool) -> Column:
+    """Pad to n characters; a longer string is cut to its first n; n <= 0 gives ''."""
+    padded = F.call_function("lpad" if left else "rpad", s, n, F.lit(fill))
+    return (
+        F.when(s.isNull() | n.isNull(), F.lit(None).cast("string"))
+        .when(n <= 0, F.lit(""))
+        .otherwise(padded)
+    )
+
+
+def instr(s: Column, sub: Column, start: int) -> Column:
+    """1-based position of sub at or after start; 0 if absent or sub is empty."""
+    found = F.call_function("locate", sub, s, F.lit(start))
+    return F.when(s.isNull() | sub.isNull(), F.lit(None).cast("int")).otherwise(
+        F.when(sub == "", F.lit(0)).otherwise(found)
+    )
+
+
+def replace(s: Column, old: str, new: str, ignore_case: bool) -> Column:
+    """Replace every non-overlapping occurrence, left to right."""
+    if not ignore_case:
+        return F.call_function("replace", s, F.lit(old), F.lit(new))
+    pattern = "(?i)" + "".join("\\" + c if c in _PUNCT else c for c in old)
+    replacement = new.replace("\\", "\\\\").replace("$", "\\$")
+    return F.regexp_replace(s, F.lit(pattern), F.lit(replacement))
+
+
+def chr_ascii(n: Column) -> Column:
+    return F.when((n >= 1) & (n <= 127), F.call_function("chr", n))
+
+
+def matches_number(s: Column) -> Column:
+    return s.rlike(NUMBER_REGEX)
+
+
+def is_whitespace(s: Column) -> Column:
+    return s.rlike(WHITESPACE_REGEX)
+
+
+def leading_decimal(s: Column, scale: int) -> Column:
+    """Value of the leading numeric prefix (0 if none), rounded half away from zero."""
+    prefix = F.regexp_extract(s, LEADING_NUMBER_REGEX, 1)
+    value = F.when(prefix == "", F.lit("0")).otherwise(prefix).cast("decimal(38,18)")
+    return F.round(value, scale).cast(f"decimal(38,{scale})")
+
+
+def parse_timestamp(s: Column, pattern: str, regex: str) -> Column:
+    """Exact parse; a non-NULL string that does not match fails the job."""
+    parsed = F.when(s.rlike(regex), F.try_to_timestamp(s, F.lit(pattern)))
+    message = F.concat(F.lit(f"cannot parse timestamp with format {pattern}: "), s)
+    return F.when(s.isNull(), F.lit(None).cast("timestamp")).otherwise(
+        F.coalesce(parsed, F.raise_error(message))
+    )
+
+
+def can_parse_timestamp(s: Column, pattern: str, regex: str) -> Column:
+    return F.when(s.isNull(), F.lit(None).cast("boolean")).otherwise(
+        s.rlike(regex) & F.try_to_timestamp(s, F.lit(pattern)).isNotNull()
+    )
+
+
+def trunc_decimal(x: Column, places: int) -> Column:
+    """Truncate toward zero to the given number of decimal places."""
+    return F.when(x >= 0, F.floor(x, F.lit(places))).otherwise(F.ceil(x, F.lit(places)))
 
 
 def lookup(
@@ -185,6 +268,7 @@ def main(
     run: Callable[[SparkSession, Context], None],
     dataflow_id: str,
     defaults: dict[str, Any] | None = None,
+    builtins: dict[str, str] | None = None,
 ) -> None:
     parser = argparse.ArgumentParser(description=f"ETLIR Spark job for {dataflow_id}")
     parser.add_argument("--bindings", required=True, type=Path)
@@ -192,6 +276,7 @@ def main(
     args = parser.parse_args()
     ctx = Context(args.bindings, args.params)
     ctx.defaults = dict(defaults or {})
+    ctx.builtins = dict(builtins or {})
     builder = (
         SparkSession.builder.appName(f"etlir:{dataflow_id}")
         .config("spark.sql.session.timeZone", "UTC")

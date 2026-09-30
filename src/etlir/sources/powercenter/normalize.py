@@ -50,6 +50,7 @@ from etlir.canonical.model import (
     OperationSpec,
     OutputGroup,
     Parameter,
+    ParameterRefNode,
     ParameterScope,
     Pipeline,
     ProjectOp,
@@ -368,11 +369,22 @@ class Normalizer:
             self.folder_datasets(folder)
         for folder in self.table.sorted_folders():
             self.folder_flows(folder)
+        used = {
+            n.parameter_id
+            for df in self.dataflows.values()
+            for e in df.expressions
+            for n in walk_expression(e.ast)
+            if isinstance(n, ParameterRefNode)
+        }
         return CanonicalDocument(
             pipelines=self.pipelines,
             dataflows=[self.dataflows[k] for k in sorted(self.dataflows)],
             datasets=[self.datasets[k] for k in sorted(self.datasets)],
-            parameters=[self.parameters[k] for k in sorted(self.parameters)],
+            parameters=[
+                self.parameters[k]
+                for k in sorted(self.parameters)
+                if not self.parameters[k].builtin or k in used
+            ],
             bindings=[self.bindings[k] for k in sorted(self.bindings)],
         )
 
@@ -472,17 +484,46 @@ class Normalizer:
 
     # ------------------------------------------------------------------ parameters
 
-    def mapping_env(self, folder: Folder, mapping: RNode) -> Env:
-        """Mapping parameters, and mapping variables this mapping never modifies, are
-        constant for a run and become canonical parameters. Variables changed with
-        SETVARIABLE (or its kin) inside this mapping carry state and stay opaque."""
+    def mapping_env(self, folder: Folder, mapping: RNode, session: RNode | None = None) -> Env:
+        """Mapping parameters and variables become canonical run parameters: PowerCenter
+        evaluates variable references with the start value for the whole session. Variables
+        changed with SETVARIABLE (or its kin) are recorded so reads carry an approximation
+        note (ETLIR does not persist the final value).
+
+        Built-ins: SESSSTARTTIME and SYSDATE read the run-start-time parameter; the mapping,
+        folder, repository and session names are literals."""
         env = Env()
         modified = self.modified_variables(mapping)
+        start = make_id("prm", "builtin", "run_start_time")
+        self.parameters.setdefault(
+            start,
+            Parameter(
+                id=start,
+                name="run_start_time",
+                scope=ParameterScope.PIPELINE,
+                type=DataType(kind=TypeKind.TIMESTAMP),
+                builtin="run_start_time",
+                source=self.ref(mapping, "pc.parameter.run-start-time"),
+            ),
+        )
+        ts = DataType(kind=TypeKind.TIMESTAMP)
+        string = DataType(kind=TypeKind.STRING)
+        env.builtins = {
+            "SESSSTARTTIME": (ParameterRefNode(parameter_id=start), ts),
+            "SYSDATE": (ParameterRefNode(parameter_id=start), ts),
+            "$PMMAPPINGNAME": (LiteralNode(value=mapping.name, type=string), string),
+            "$PMFOLDERNAME": (LiteralNode(value=folder.name, type=string), string),
+            "$PMREPOSITORYNAME": (LiteralNode(value=folder.repository, type=string), string),
+        }
+        if session is not None:
+            env.builtins["$PMSESSIONNAME"] = (
+                LiteralNode(value=session.name, type=string),
+                string,
+            )
         for v in mapping.children("MAPPINGVARIABLE"):
             key = v.name.lstrip("$").upper()
             if v.get("ISPARAM") != "YES" and key in modified:
                 env.stateful.add(key)
-                continue
             pid = make_id("prm", folder.repository, folder.name, mapping.name, v.name.lstrip("$"))
             sensitive = bool(_SENSITIVE.search(v.name))
             ptype = port_type(v.get("DATATYPE"), v.get("PRECISION"), v.get("SCALE"))
@@ -530,7 +571,7 @@ class Normalizer:
         df_src = self.ref(
             session or mapping, "pc.dataflow.session" if session else "pc.dataflow.mapping"
         )
-        base_env = self.mapping_env(folder, mapping)
+        base_env = self.mapping_env(folder, mapping, session)
         local = {t.name: t for t in mapping.children("TRANSFORMATION")}
         # Instance names are unique per transformation type only (a source and its source
         # qualifier may share a name); connectors disambiguate with *INSTANCETYPE.
@@ -815,7 +856,11 @@ class Normalizer:
             return ex_id
 
         def env_for(inputs: list[Port], **kw: object) -> Env:
-            env = Env(parameters=dict(base_env.parameters), stateful=set(base_env.stateful))
+            env = Env(
+                parameters=dict(base_env.parameters),
+                stateful=set(base_env.stateful),
+                builtins=dict(base_env.builtins),
+            )
             for k, v in kw.items():
                 setattr(env, k, v)
             for p in inputs:
@@ -1503,8 +1548,10 @@ class Normalizer:
         variables = [p for p in ports if p.is_variable]
         env.pending = {v.name for v in variables}
         for v in variables:
-            env.pending.discard(v.name)
+            # Still pending while its own expression is translated: a self-reference reads
+            # the previous row's value (stateful).
             t = translate(v.expression, env)
+            env.pending.discard(v.name)
             if t.opaque:
                 reason = t.node.reason if isinstance(t.node, OpaqueNode) else ""
                 env.inline[v.name] = (
@@ -1528,7 +1575,12 @@ class Normalizer:
                         )
                     )
                 continue
-            t = translate(p.expression, env)
+            if not p.expression.strip():
+                t = Translation(
+                    LiteralNode(value=None, type=p.type), p.type, {"pc.expr.empty-output"}
+                )
+            else:
+                t = translate(p.expression, env)
             if not t.opaque:
                 t = Translation(convert(t, p.type, p.expression), p.type, t.notes)
             assignments.append(
@@ -1899,6 +1951,11 @@ def convert(t: Translation, target: DataType, text: str) -> ExpressionNode:
         return CastNode(to=target, arg=t.node)
     if src is target.kind:
         return t.node
+    whole = src in (TypeKind.INTEGER, TypeKind.BIGINT) or (
+        src is TypeKind.DECIMAL and t.type.precision is not None and not t.type.scale
+    )
+    if whole and target.kind is TypeKind.STRING:  # exact: the number's decimal digits
+        return CallNode(function="to_string", args=[t.node])
     return OpaqueNode(
         text=text,
         dialect=DIALECT,

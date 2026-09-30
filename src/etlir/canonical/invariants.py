@@ -22,6 +22,7 @@ from etlir.canonical.model import (
     Dataset,
     DependencyCondition,
     ExpressionNode,
+    LiteralNode,
     OpaqueNode,
     ParameterRefNode,
     Pipeline,
@@ -170,6 +171,23 @@ def _check_expression_params(
             if isinstance(node, ParameterRefNode) and node.parameter_id not in parameter_ids:
                 out.append(
                     _diag("IR-V-002", f"Unknown parameter '{node.parameter_id}'.", expr_id, src)
+                )
+            elif (
+                isinstance(node, CallNode)
+                and node.function in CATALOG
+                and any(
+                    i < len(node.args) and not isinstance(node.args[i], LiteralNode)
+                    for i in CATALOG[node.function].literal_args
+                )
+            ):
+                out.append(
+                    _diag(
+                        "IR-V-014",
+                        f"{node.function} requires literal arguments at positions "
+                        f"{list(CATALOG[node.function].literal_args)}.",
+                        expr_id,
+                        src,
+                    )
                 )
             elif isinstance(node, CallNode) and not arity_ok(node.function, len(node.args)):
                 out.append(

@@ -811,12 +811,12 @@
               "type": "null"
             }
           ],
-          "description": "Literal value. Decimals and timestamps are encoded as strings.",
+          "default": null,
+          "description": "Literal value (absent or null for NULL). Decimals and timestamps are encoded as strings.",
           "title": "Value"
         }
       },
       "required": [
-        "value",
         "type"
       ],
       "title": "LiteralNode",
@@ -1009,6 +1009,20 @@
     "Parameter": {
       "additionalProperties": false,
       "properties": {
+        "builtin": {
+          "anyOf": [
+            {
+              "const": "run_start_time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Value supplied by the runtime when the run does not set it: run_start_time is the run's start instant (UTC), identical for every task of a run.",
+          "title": "Builtin"
+        },
         "default": {
           "anyOf": [
             {

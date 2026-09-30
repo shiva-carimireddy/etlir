@@ -49,6 +49,31 @@ class FunctionSpec:
     aggregate: bool
     nulls: str
     result: Callable[[Sequence[DataType]], DataType]
+    literal_args: tuple[int, ...] = ()  # argument positions that must be literals
+
+
+# Timestamp format strings: tokens YYYY MM DD HH24 MI SS, separated by any of "-/ :.T".
+FORMAT_TOKENS = ("YYYY", "HH24", "MM", "DD", "MI", "SS")
+FORMAT_SEPARATORS = "-/ :.T"
+UNITS = ("year", "month", "day", "hour", "minute", "second")
+
+
+def parse_format(fmt: str) -> list[str] | None:
+    """Split a canonical timestamp format into tokens and separators, or None if invalid."""
+    out: list[str] = []
+    i = 0
+    while i < len(fmt):
+        for tok in FORMAT_TOKENS:
+            if fmt.startswith(tok, i):
+                out.append(tok)
+                i += len(tok)
+                break
+        else:
+            if fmt[i] not in FORMAT_SEPARATORS:
+                return None
+            out.append(fmt[i])
+            i += 1
+    return out if any(t in FORMAT_TOKENS for t in out) else None
 
 
 def _fixed(kind: TypeKind) -> Callable[[Sequence[DataType]], DataType]:
@@ -115,6 +140,15 @@ CATALOG: dict[str, FunctionSpec] = {
             lambda ts: common_type(ts[1:]),
         ),
         FunctionSpec(
+            "case",
+            3,
+            None,
+            False,
+            "Arguments are condition/value pairs followed by a default: returns the value of "
+            "the first TRUE condition, else the default (a NULL condition is not TRUE).",
+            lambda ts: common_type([*ts[1:-1:2], ts[-1]]),
+        ),
+        FunctionSpec(
             "coalesce", 1, None, False, "First non-NULL argument.", lambda ts: common_type(ts)
         ),
         FunctionSpec("upper", 1, 1, False, STRICT, _fixed(TypeKind.STRING)),
@@ -138,6 +172,192 @@ CATALOG: dict[str, FunctionSpec] = {
             " length <= 0 yields ''.",
             _fixed(TypeKind.STRING),
         ),
+        FunctionSpec("sign", 1, 1, False, STRICT + " -1, 0 or 1.", _fixed(TypeKind.INTEGER)),
+        FunctionSpec(
+            "lpad",
+            3,
+            3,
+            False,
+            STRICT + " Pads on the left with the pad string to length n; a longer string is "
+            "cut to its first n characters; n <= 0 yields ''.",
+            _fixed(TypeKind.STRING),
+            (2,),
+        ),
+        FunctionSpec(
+            "rpad",
+            3,
+            3,
+            False,
+            STRICT + " As lpad, padding on the right.",
+            _fixed(TypeKind.STRING),
+            (2,),
+        ),
+        FunctionSpec(
+            "instr",
+            3,
+            3,
+            False,
+            STRICT + " 1-based position of the first occurrence at or after start (start >= 1), "
+            "0 if none or if the search string is empty.",
+            _fixed(TypeKind.INTEGER),
+            (2,),
+        ),
+        FunctionSpec(
+            "translate",
+            3,
+            3,
+            False,
+            "NULL if the input is NULL. Each character of arg 2 is replaced by the character at "
+            "the same position of arg 3, or removed when arg 3 is shorter.",
+            _fixed(TypeKind.STRING),
+            (1, 2),
+        ),
+        FunctionSpec(
+            "replace",
+            3,
+            3,
+            False,
+            "NULL if the input is NULL. Replaces every non-overlapping occurrence of arg 2, "
+            "left to right, case-sensitively.",
+            _fixed(TypeKind.STRING),
+            (1, 2),
+        ),
+        FunctionSpec(
+            "replace_ci",
+            3,
+            3,
+            False,
+            "As replace, matching case-insensitively.",
+            _fixed(TypeKind.STRING),
+            (1, 2),
+        ),
+        FunctionSpec(
+            "chr",
+            1,
+            1,
+            False,
+            STRICT + " ASCII character with code 1-127; NULL for other codes.",
+            _fixed(TypeKind.STRING),
+        ),
+        FunctionSpec(
+            "matches_number",
+            1,
+            1,
+            False,
+            STRICT + " TRUE if the string is a decimal number: optional surrounding spaces, "
+            "optional sign, digits with an optional fraction, optional exponent.",
+            _fixed(TypeKind.BOOLEAN),
+        ),
+        FunctionSpec(
+            "is_whitespace",
+            1,
+            1,
+            False,
+            STRICT + " TRUE if the string is non-empty and has only space, tab, newline, "
+            "carriage return, form feed or vertical tab characters.",
+            _fixed(TypeKind.BOOLEAN),
+        ),
+        FunctionSpec(
+            "leading_decimal",
+            2,
+            2,
+            False,
+            "NULL if the input is NULL. The decimal value of the longest leading numeric "
+            "prefix (after leading spaces), 0 if there is none, rounded half away from zero "
+            "to arg 2 decimal places.",
+            lambda ts: _t(TypeKind.DECIMAL),
+            (1,),
+        ),
+        FunctionSpec(
+            "to_string",
+            1,
+            1,
+            False,
+            STRICT + " Decimal digits of a whole number (integer types, decimals with scale 0).",
+            _fixed(TypeKind.STRING),
+        ),
+        FunctionSpec(
+            "format_timestamp",
+            2,
+            2,
+            False,
+            STRICT + " Formats with a canonical format (YYYY MM DD HH24 MI SS).",
+            _fixed(TypeKind.STRING),
+            (1,),
+        ),
+        FunctionSpec(
+            "parse_timestamp",
+            2,
+            2,
+            False,
+            STRICT + " Parses exactly per the format; a string that does not match fails the task.",
+            _fixed(TypeKind.TIMESTAMP),
+            (1,),
+        ),
+        FunctionSpec(
+            "can_parse_timestamp",
+            2,
+            2,
+            False,
+            STRICT + " TRUE if parse_timestamp would succeed.",
+            _fixed(TypeKind.BOOLEAN),
+            (1,),
+        ),
+        FunctionSpec(
+            "trunc",
+            2,
+            2,
+            False,
+            STRICT + " Truncates toward zero to arg 2 (>= 0) decimal places.",
+            _first,
+            (1,),
+        ),
+        FunctionSpec(
+            "round",
+            2,
+            2,
+            False,
+            STRICT + " Rounds half away from zero to arg 2 (>= 0) decimal places.",
+            _first,
+            (1,),
+        ),
+        FunctionSpec(
+            "trunc_timestamp",
+            2,
+            2,
+            False,
+            STRICT + " Truncates to the unit (year, month, day, hour, minute).",
+            _fixed(TypeKind.TIMESTAMP),
+            (1,),
+        ),
+        FunctionSpec(
+            "add_interval",
+            3,
+            3,
+            False,
+            STRICT + " Adds n units (year..second); month arithmetic clamps to the "
+            "last day of the month.",
+            _fixed(TypeKind.TIMESTAMP),
+            (1,),
+        ),
+        FunctionSpec(
+            "timestamp_part",
+            2,
+            2,
+            False,
+            STRICT + " Year, month, day, hour, minute or second of the timestamp.",
+            _fixed(TypeKind.INTEGER),
+            (1,),
+        ),
+        FunctionSpec(
+            "fail",
+            1,
+            1,
+            False,
+            "Fails the task with the message when evaluated.",
+            _fixed(TypeKind.UNKNOWN),
+            (0,),
+        ),
         FunctionSpec("sum", 1, 1, True, "Ignores NULLs; NULL if no non-NULL input.", _sum),
         FunctionSpec(
             "count", 1, 1, True, "Counts non-NULL values; 0 for no input.", _fixed(TypeKind.BIGINT)
@@ -154,8 +374,25 @@ def arity_ok(name: str, n: int) -> bool:
     spec = CATALOG.get(name)
     if spec is None:
         return False
+    if name == "case" and n % 2 == 0:
+        return False
     return n >= spec.min_args and (spec.max_args is None or n <= spec.max_args)
 
 
 def result_type(name: str, arg_types: Sequence[DataType]) -> DataType:
     return CATALOG[name].result(arg_types)
+
+
+def format_regex(tokens: Sequence[str]) -> str:
+    """Anchored regex a string must match to parse with the format (fixed-width digits)."""
+    width = {"YYYY": 4}
+    body = "".join(
+        f"[0-9]{{{width.get(t, 2)}}}" if t in FORMAT_TOKENS else (r"\." if t == "." else t)
+        for t in tokens
+    )
+    return f"^{body}$"
+
+
+NUMBER_REGEX = r"^ *[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)? *$"
+LEADING_NUMBER_REGEX = r"^ *([+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+))"
+WHITESPACE_REGEX = r"^[ \t\n\r\f\x0B]+$"
