@@ -31,15 +31,16 @@ is reported as numerator/denominator.
 | Operation emission | summary `targets.<t>.operations_in_emitted_dataflows` | operations in emitted dataflows / all operations |
 | Traceability | summary `targets.<t>.traceability` | operations with a code location / emitted operations |
 | Task runnability | summary `targets.<t>.tasks` | runnable / total tasks |
+| Corpus coverage | corpus `totals` and `groups` (`etlir corpus`) | the measures above summed over verified groups; a group whose files fail their digest is not converted |
+| Corpus blockers | corpus `blockers` | occurrences of each normalized unsupported-operation and opaque-expression reason |
 | Deterministic conversion | results `deterministic_conversion` | byte-identical repeat conversions / cases |
 | Expectation checks | results `expectation_checks_passed` | cases whose blocked tasks and diagnostic codes match the manifest / cases |
 | Execution | results `execution_as_expected` | runs with the declared outcome (succeeded, partial or failed) / executed cases |
 | Output agreement | results `output_agreement` | cases agreeing on all declared outputs / compared cases |
 | Mutation detection | results `mutations_detected` | detected / applicable mutation operators |
 
-Still to implement before freezing: per-file and per-workflow result rows for corpus
-groups, stage timings and peak memory, and the analysis script that renders paper tables
-from `results/<release>/`.
+Still to implement before freezing: stage timings and peak memory, and the analysis
+script that renders paper tables from `results/<release>/`.
 
 ## Comparison policy
 

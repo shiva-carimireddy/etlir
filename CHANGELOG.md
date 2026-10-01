@@ -36,6 +36,8 @@ All notable changes are documented here. The format follows
   variables as run parameters, booleans into string ports, unused unconnected ports.
 - Invariants IR-V-018 (missing input) and IR-V-019 (keyed write keys); a dataflow violating
   a structural invariant is blocked instead of emitted.
+- `etlir corpus`: verifies the pinned corpus digests, converts every group, and writes a
+  deterministic `corpus.json` (per-group rows, totals, ranked blocker reasons).
 - Benchmark manifests can seed existing target content (`[seed]`). New cases
   `pc-update-strategy` and `pc-sequence`.
 

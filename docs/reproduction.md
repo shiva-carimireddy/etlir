@@ -45,6 +45,12 @@ resolution, canonical coverage, emission, traceability); see
 [benchmarks/protocol.md](../benchmarks/protocol.md). Several groups have no license:
 use them locally only and do not redistribute them.
 
+`corpus.json` holds one row per group and totals, every measure as a numerator and
+denominator (files verified, inputs accepted, operations mapped, expressions parsed, and
+per target dataflows emitted and tasks runnable), plus the blocker reasons ranked by
+occurrence with object names removed. It contains no timestamps or absolute paths, so two
+runs of the same release produce identical files.
+
 ## Determinism
 
 Conversion writes no timestamps or absolute paths into its artifacts, so identical inputs
