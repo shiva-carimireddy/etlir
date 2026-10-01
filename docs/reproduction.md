@@ -36,6 +36,7 @@ PowerCenter, which would require authorized executions of the source platform.
 
 ```bash
 python scripts/fetch_corpus.py          # clones pinned commits, verifies 67 SHA-256 digests
+etlir corpus --out results/local/corpus  # re-verifies digests, converts every group, writes corpus.json
 etlir convert benchmarks/external/hhs-informatica --out out/hhs --target spark
 ```
 
