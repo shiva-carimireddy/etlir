@@ -64,6 +64,33 @@ Normalizer, Sorter, Rank, Union, Custom, Stored Procedure, Transaction Control, 
 dynamic lookup caches, and merges that are not row-aligned (in the public corpus every such
 merge traces back to one of these unsupported upstreams).
 
+### Update strategies, sequences, global aggregators
+
+* **Update Strategy** (constant `DD_INSERT`/`DD_UPDATE`, or 0/1): rows pass unchanged. A
+  session that treats rows as *Insert* inserts them all. A *Data driven* session applies the
+  constant at each target: `DD_UPDATE` becomes a keyed `update` on the target's primary key
+  (*Update as Update*), an `upsert` (*Update else Insert*) or an insert (*Update as Insert*).
+  Row-level expressions, `DD_DELETE`/`DD_REJECT`, flat-file targets, targets without a primary
+  key and targets truncated before the load are unsupported.
+* **Sequence Generator**: when `NEXTVAL` feeds one transformation that has one other
+  upstream, that upstream is routed through a canonical `sequence` op. The start value is a
+  run parameter whose default is the export's *Current Value* (*Start Value* with *Reset*).
+  `APPROXIMATED`: values are assigned in a deterministic order (all columns ascending), not
+  PowerCenter's arrival order, and the final value is not persisted between runs. Cycling
+  generators, end values and `CURRVAL` are unsupported. With two consumers, each gets a
+  block of consecutive values (as PowerCenter documents); the first block goes to the
+  consumer that sorts first by name.
+* **Sorter**: rows pass unchanged (relations are unordered); *Distinct* removes duplicates.
+* **Aggregator without group-by ports**: a global aggregate that emits no row for empty
+  input (aggregate with a row count, then a filter on the count). `APPROXIMATED`: the
+  empty-input behavior follows community documentation, not a verified runtime.
+* A transformation port that receives nothing and passes nothing on is dropped; a
+  transformation with no connected input at all is unsupported.
+* A boolean written to a string port becomes `"1"`/`"0"` (PowerCenter booleans are integers).
+* `$PM…` variables other than the names above (for example `$PMRepositoryServiceName`) are
+  values of the run environment: run parameters without a default. Run statistics such as
+  `$PMTarget@numAffectedRows` stay opaque.
+
 ### Lookup policies
 
 | PowerCenter "Lookup policy on multiple match" | Canonical | Evidence |
@@ -107,19 +134,54 @@ Operator precedence (highest first): `()`, unary `+ - NOT`, `* / %`, `+ -`, `||`
 `< <= > >=`, `= <> != ^=`, `AND`, `OR`. Comments `--` and `//`.
 
 Supported: numeric and string literals, `NULL`, `TRUE`/`FALSE`, port references
-(case-insensitive), declared mapping parameters, arithmetic `+ - * /`, `||`, comparisons,
-`AND OR NOT`, `IIF` (3 arguments), `ISNULL`, `UPPER`, `LOWER`, `LTRIM`/`RTRIM`
-(1 argument), `LENGTH`, `SUBSTR`, `CONCAT`, `ABS`, unconnected lookup calls `:LKP.name(args)` (in
-Expression transformations), and in aggregators `SUM`, `COUNT`,
-`COUNT(*)`, `MIN`, `MAX`, `AVG`.
+(case-insensitive), mapping parameters and variables, arithmetic `+ - * /`, `||`,
+comparisons, `AND OR NOT`, unconnected lookup calls `:LKP.name(args)` (in Expression
+transformations), and in aggregators `SUM`, `COUNT`, `COUNT(*)`, `MIN`, `MAX`, `AVG`.
+Functions:
+
+| PowerCenter | Canonical | Notes |
+|---|---|---|
+| `IIF(c, a[, b])` | `if` | without `b`: 0 for numbers, `''` for strings, NULL otherwise (documented default) |
+| `DECODE(v, s1, r1, …[, d])` | `case` over `eq(v, si)` | no default → NULL; `DECODE(TRUE, c1, r1, …)` uses the conditions directly; a NULL search value is opaque |
+| `IN(v, a, b, …[, CaseFlag])` | `or` of `eq` | CaseFlag 0 compares upper-cased; without a CaseFlag, lists with letters are opaque (default unverified); a NULL item is opaque |
+| `ISNULL`, `UPPER`, `LOWER`, `LTRIM`/`RTRIM` (1 arg), `LENGTH`, `SUBSTR`, `CONCAT`, `ABS`, `SIGN`, `CHR` | same name | |
+| `LPAD`/`RPAD(s, n[, pad])` | `lpad`/`rpad` | pad defaults to a space; must be a non-empty literal |
+| `INSTR(s, search[, start[, 1]])` | `instr` | start must be a literal ≥ 1; other occurrences and backward search are opaque |
+| `REPLACECHR(flag, s, chars, new)` | `translate` | flag 0 adds both letter cases; NULL/`''` `new` removes |
+| `REPLACESTR(flag, s, old, new)` | `replace` / `replace_ci` | one search string only |
+| `IS_NUMBER`, `IS_SPACES` | `matches_number`, `is_whitespace` | |
+| `TO_DATE(s[, fmt])`, `IS_DATE(s[, fmt])`, `TO_CHAR(date[, fmt])` | `parse_timestamp`, `can_parse_timestamp`, `format_timestamp` | formats limited to `YYYY MM DD HH24 MI SS` (and `YY` for `TO_CHAR`); no format → `MM/DD/YYYY HH24:MI:SS` (`pc.expr.default-date-format`) |
+| `TO_CHAR(n)` | `to_string` | whole numbers exactly; fractional decimals as plain notation without trailing zeros (`pc.expr.number-text`: PowerCenter uses at most 15 significant digits); doubles are opaque |
+| `TO_DECIMAL(v[, scale])`, `TO_INTEGER(v[, flag])` | `leading_decimal` / `round` / `trunc` + cast | strings convert their leading numeric part, 0 if none (`pc.expr.to-number`) |
+| `TRUNC(n[, p])`, `ROUND(n[, p])` | `trunc`, `round` | `p` a literal ≥ 0 |
+| `TRUNC(date[, fmt])`, `ADD_TO_DATE`, `GET_DATE_PART` | `trunc_timestamp`, `add_interval`, `timestamp_part` | units Y…/MM/MON/MONTH/D…/HH…/MI/SS |
+| `ABORT(msg)` | `fail` | a computed message becomes a fixed one (`pc.expr.abort-message`) |
+| `SETVARIABLE($$v, x)` | `x` | see mapping variables below |
+
+Built-ins: `SESSSTARTTIME` and `SYSDATE` read the run-start-time parameter
+(`SYSDATE` is `APPROXIMATED`: PowerCenter reads the clock per row); `$PMMappingName`,
+`$PMFolderName`, `$PMRepositoryName` and, for session dataflows, `$PMSessionName` become
+literals. Other `$PM…` variables stay opaque.
+
+Mapping variables: PowerCenter evaluates references with the variable's start value for the
+whole session, so every mapping variable is a run parameter. For a variable changed with
+`SETVARIABLE`, reads are `APPROXIMATED` (`pc.expr.mapping-variable`) because ETLIR does not
+persist the final value between runs: supply it as the parameter. `SETVARIABLE` returns its
+value; with a NULL literal (which returns the current value) it is opaque.
+
+An integer or scale-0 decimal assigned to a string port converts to its digits. An output
+port with an empty expression yields NULL (`pc.expr.empty-output`). `TO_DATE` on a string
+that does not match fails the run, where PowerCenter rejects the row (`pc.expr.to-date`).
 
 Fail-closed rules (the expression becomes opaque, with a reason):
 
 * `NOT` used directly as an operand of a comparison or arithmetic operator
   (`NOT A = B`): the precedence is ambiguous across references, so it is not guessed.
-* Anything not listed above: other functions (`DECODE`, `TO_CHAR`, `LPAD`, …), `%`,
-  stored procedure and mapplet calls (`:SP.`, `:MPLT.`), built-in variables (`$PM…`, `SYSDATE`, `SESSSTARTTIME`),
-  implicit string↔number conversions, type-mismatched comparisons, `IIF` without an else.
+* Anything not listed above: other functions and call shapes, `%`, stored procedure and
+  mapplet calls (`:SP.`, `:MPLT.`), other built-in variables, string→number and fractional
+  number→string implicit conversions, type-mismatched comparisons, IIF/DECODE results of
+  different types, and variable ports that read their own or a later variable's value
+  (stateful: they depend on the previous row).
 
 Known approximation: division by zero yields NULL canonically; PowerCenter's behavior was
 not verified against a runtime, so expressions using `/` carry evidence status

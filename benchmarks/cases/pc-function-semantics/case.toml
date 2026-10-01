@@ -1,0 +1,25 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-function-semantics"
+title = "Truth table for the canonical function catalog (strings, numbers, dates, DECODE, IN, built-ins) on every target"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/m_function_semantics.xml"]
+partition = "behaviorally-comparable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = []
+
+# SESSSTARTTIME reads the run-start-time parameter; $$LAST_Q is changed by SETVARIABLE, so
+# ETLIR reads its start value, supplied as a run parameter.
+[params]
+"prm:builtin:run_start_time" = "2026-01-02 03:04:05"
+"prm:ETLIR_SYNTH:ETLIR_DEMO:m_FUNCTION_SEMANTICS:LAST_Q" = "100"
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:FN_INPUT" = { format = "csv", path = "inputs/fn_input.csv" }
+
+# Expected values follow docs/semantics.md, row by row (derived by hand, not from emitter output).
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:FN_OUTPUT" = "expected/fn_output.jsonl"

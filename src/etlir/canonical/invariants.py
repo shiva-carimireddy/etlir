@@ -22,6 +22,7 @@ from etlir.canonical.model import (
     Dataset,
     DependencyCondition,
     ExpressionNode,
+    LiteralNode,
     OpaqueNode,
     ParameterRefNode,
     Pipeline,
@@ -48,6 +49,20 @@ CODES: dict[str, str] = {
     "IR-V-015": "Column does not resolve.",
     "IR-V-016": "Join inputs are missing or have overlapping column names.",
     "IR-V-017": "Operation does not declare its output columns.",
+    "IR-V-018": "Operation is missing a required input.",
+    "IR-V-019": "Keyed write without valid key columns, or keys on a non-keyed write.",
+}
+
+# Input slots each operation kind needs (join inputs are checked by IR-V-016).
+_REQUIRED_INPUTS = {
+    "project": ("in",),
+    "derive": ("in",),
+    "filter": ("in",),
+    "route": ("in",),
+    "aggregate": ("in",),
+    "write": ("in",),
+    "lookup": ("in", "lookup"),
+    "sequence": ("in",),
 }
 
 
@@ -170,6 +185,23 @@ def _check_expression_params(
             if isinstance(node, ParameterRefNode) and node.parameter_id not in parameter_ids:
                 out.append(
                     _diag("IR-V-002", f"Unknown parameter '{node.parameter_id}'.", expr_id, src)
+                )
+            elif (
+                isinstance(node, CallNode)
+                and node.function in CATALOG
+                and any(
+                    i < len(node.args) and not isinstance(node.args[i], LiteralNode)
+                    for i in CATALOG[node.function].literal_args
+                )
+            ):
+                out.append(
+                    _diag(
+                        "IR-V-014",
+                        f"{node.function} requires literal arguments at positions "
+                        f"{list(CATALOG[node.function].literal_args)}.",
+                        expr_id,
+                        src,
+                    )
                 )
             elif isinstance(node, CallNode) and not arity_ok(node.function, len(node.args)):
                 out.append(
@@ -301,6 +333,22 @@ def _validate_dataflow(
         if src_op.spec.kind == "write":
             out.append(_diag("IR-V-007", "Write has an outgoing edge.", src_op.id, src_op.source))
 
+    fed: dict[str, set[str]] = {}
+    for e in df.edges:
+        fed.setdefault(e.to_operation, set()).add(e.to_input)
+    for op in df.operations:
+        absent = [
+            slot
+            for slot in _REQUIRED_INPUTS.get(op.spec.kind, ())
+            if slot not in fed.get(op.id, set())
+        ]
+        if op.spec.kind == "union" and not fed.get(op.id):
+            absent = ["in"]
+        if absent:
+            out.append(
+                _diag("IR-V-018", f"Operation '{op.id}' has no input {absent}.", op.id, op.source)
+            )
+
     cycle = _find_cycle(ops, edges)
     if cycle:
         out.append(_diag("IR-V-004", f"Cycle among operations {sorted(cycle)}.", df.id, df.source))
@@ -414,6 +462,17 @@ def _validate_columns(df: Dataflow, datasets: dict[str, Dataset]) -> list[Diagno
                         out.append(
                             _diag("IR-V-015", f"Output '{c.name}' has no source.", op.id, op.source)
                         )
+        elif spec.kind == "sequence":
+            if spec.column in visible:
+                out.append(
+                    _diag("IR-V-015", f"Column '{spec.column}' already exists.", op.id, op.source)
+                )
+            for group in op.outputs:
+                for c in group.columns:
+                    if c.name != spec.column and c.name not in visible:
+                        out.append(
+                            _diag("IR-V-015", f"Output '{c.name}' has no source.", op.id, op.source)
+                        )
         elif spec.kind == "project":
             for name in spec.columns:
                 if name not in visible:
@@ -426,4 +485,15 @@ def _validate_columns(df: Dataflow, datasets: dict[str, Dataset]) -> list[Diagno
             target = {c.name for c in datasets[spec.dataset_id].columns}
             for name in sorted(visible - target):
                 out.append(_diag("IR-V-015", f"Dataset has no column '{name}'.", op.id, op.source))
+            keyed = spec.mode in ("update", "upsert")
+            if keyed != bool(spec.keys) or not set(spec.keys) <= target & visible:
+                out.append(
+                    _diag(
+                        "IR-V-019",
+                        f"Write mode '{spec.mode}' with keys {spec.keys}: keyed modes need key "
+                        "columns that the input provides and the dataset declares.",
+                        op.id,
+                        op.source,
+                    )
+                )
     return out

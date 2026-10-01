@@ -1,0 +1,543 @@
+{
+  "blockers": {
+    "opaque_expressions": [
+      {
+        "count": 109,
+        "reason": "variable port <name> is read before it is set (stateful)"
+      },
+      {
+        "count": 16,
+        "reason": "function FIRST/2 is not in the supported subset"
+      },
+      {
+        "count": 13,
+        "reason": "IS_DATE format '<name>' is not supported"
+      },
+      {
+        "count": 12,
+        "reason": "implicit conversion from string to decimal"
+      },
+      {
+        "count": 9,
+        "reason": "expected '<name>', found '<name>'"
+      },
+      {
+        "count": 6,
+        "reason": "IN on letters without a CaseFlag (default case sensitivity unverified)"
+      },
+      {
+        "count": 4,
+        "reason": "INSTR start must be an integer literal"
+      },
+      {
+        "count": 2,
+        "reason": "empty expression"
+      },
+      {
+        "count": 2,
+        "reason": "unknown port <name>"
+      },
+      {
+        "count": 1,
+        "reason": "INSTR with a start position below 1 (backward search)"
+      },
+      {
+        "count": 1,
+        "reason": "REPLACESTR OldString must be a string literal"
+      }
+    ],
+    "unsupported_operations": [
+      {
+        "count": 40,
+        "reason": "Normalizer: transformation type '<name>' is not supported"
+      },
+      {
+        "count": 23,
+        "reason": "Source Definition: hierarchical (VSAM) source layouts are not supported"
+      },
+      {
+        "count": 20,
+        "reason": "Mapplet: mapplet expansion is not supported"
+      },
+      {
+        "count": 17,
+        "reason": "Aggregator: port <name> passes the last row's value (order dependent)"
+      },
+      {
+        "count": 8,
+        "reason": "Expression: row alignment cannot be established through unsupported upstream [<names>]"
+      },
+      {
+        "count": 5,
+        "reason": "Source Qualifier: SQL override: Subquery is not supported"
+      },
+      {
+        "count": 4,
+        "reason": "Expression: no connected inputs"
+      },
+      {
+        "count": 4,
+        "reason": "Target Definition: row alignment cannot be established through unsupported upstream [<names>]"
+      },
+      {
+        "count": 3,
+        "reason": "Custom Transformation: transformation type '<name>' is not supported"
+      },
+      {
+        "count": 3,
+        "reason": "Lookup Procedure: lookup source SQL: table <name> has no source/target definition"
+      },
+      {
+        "count": 2,
+        "reason": "Expression: input port <name> replaces NULLs with a default value"
+      },
+      {
+        "count": 2,
+        "reason": "Filter: unconnected input ports [<names>]"
+      },
+      {
+        "count": 2,
+        "reason": "Rank: transformation type '<name>' is not supported"
+      },
+      {
+        "count": 2,
+        "reason": "Source Qualifier: SQL override: SQL does not parse: Expecting ). Line 3, Col: 51."
+      },
+      {
+        "count": 2,
+        "reason": "Target Definition: definition of Target Definition '<name>' not found"
+      },
+      {
+        "count": 2,
+        "reason": "Update Strategy: no connected inputs"
+      },
+      {
+        "count": 1,
+        "reason": "Filter: row alignment cannot be established through unsupported upstream [<names>]"
+      },
+      {
+        "count": 1,
+        "reason": "Lookup Procedure: lookup source SQL: Subquery is not supported"
+      },
+      {
+        "count": 1,
+        "reason": "Lookup Procedure: lookup source SQL: table <name> lacks lookup ports [<names>]"
+      },
+      {
+        "count": 1,
+        "reason": "Lookup Procedure: no connected inputs"
+      },
+      {
+        "count": 1,
+        "reason": "Mapplet: no connected inputs"
+      },
+      {
+        "count": 1,
+        "reason": "Sequence Generator: sequence generator shape not supported (NEXTVAL must feed one transformation that has one other upstream; CURRVAL is not supported)"
+      },
+      {
+        "count": 1,
+        "reason": "Sequence: cycling sequence generator"
+      },
+      {
+        "count": 1,
+        "reason": "Sequence: sequence generator shape not supported (NEXTVAL must feed one transformation that has one other upstream; CURRVAL is not supported)"
+      },
+      {
+        "count": 1,
+        "reason": "Source Definition: definition of Source Definition '<name>' not found"
+      },
+      {
+        "count": 1,
+        "reason": "Source Qualifier: SQL override: HAVING clauses are not supported"
+      },
+      {
+        "count": 1,
+        "reason": "Source Qualifier: SQL override: LIMIT clauses are not supported"
+      },
+      {
+        "count": 1,
+        "reason": "Source Qualifier: SQL override: SQL does not parse: Expecting ). Line 7, Col: 38."
+      },
+      {
+        "count": 1,
+        "reason": "Source Qualifier: unconnected input ports [<names>]"
+      },
+      {
+        "count": 1,
+        "reason": "Stored Procedure: no connected inputs"
+      },
+      {
+        "count": 1,
+        "reason": "Target Definition: no connected inputs"
+      },
+      {
+        "count": 1,
+        "reason": "Transaction Control: transformation type '<name>' is not supported"
+      },
+      {
+        "count": 1,
+        "reason": "Update Strategy: row-level update strategy expression"
+      },
+      {
+        "count": 1,
+        "reason": "Update Strategy: unconnected input ports [<names>]"
+      }
+    ]
+  },
+  "etlir_version": "0.2.0",
+  "groups": [
+    {
+      "expressions_parsed": {
+        "count": 2,
+        "of": 4
+      },
+      "files_verified": {
+        "count": 1,
+        "of": 1
+      },
+      "group": "crawl-fixture",
+      "inputs_accepted": {
+        "count": 1,
+        "of": 1
+      },
+      "license": "Apache-2.0",
+      "operations_mapped": {
+        "count": 5,
+        "of": 13
+      },
+      "status": "converted",
+      "targets": {
+        "duckdb": {
+          "dataflows_emitted": {
+            "count": 0,
+            "of": 2
+          },
+          "tasks_runnable": {
+            "count": 0,
+            "of": 5
+          }
+        },
+        "spark": {
+          "dataflows_emitted": {
+            "count": 0,
+            "of": 2
+          },
+          "tasks_runnable": {
+            "count": 0,
+            "of": 5
+          }
+        }
+      }
+    },
+    {
+      "expressions_parsed": {
+        "count": 31,
+        "of": 31
+      },
+      "files_verified": {
+        "count": 18,
+        "of": 18
+      },
+      "group": "enterprise-dwh-powercenter",
+      "inputs_accepted": {
+        "count": 18,
+        "of": 18
+      },
+      "license": "none-found",
+      "operations_mapped": {
+        "count": 72,
+        "of": 76
+      },
+      "status": "converted",
+      "targets": {
+        "duckdb": {
+          "dataflows_emitted": {
+            "count": 11,
+            "of": 15
+          },
+          "tasks_runnable": {
+            "count": 11,
+            "of": 15
+          }
+        },
+        "spark": {
+          "dataflows_emitted": {
+            "count": 11,
+            "of": 15
+          },
+          "tasks_runnable": {
+            "count": 11,
+            "of": 15
+          }
+        }
+      }
+    },
+    {
+      "files_verified": {
+        "count": 0,
+        "of": 0
+      },
+      "group": "etlir-synthetic",
+      "license": "Apache-2.0",
+      "status": "no-pinned-files"
+    },
+    {
+      "expressions_parsed": {
+        "count": 55,
+        "of": 55
+      },
+      "files_verified": {
+        "count": 1,
+        "of": 1
+      },
+      "group": "global-superstore-datamart",
+      "inputs_accepted": {
+        "count": 1,
+        "of": 1
+      },
+      "license": "none-found",
+      "operations_mapped": {
+        "count": 59,
+        "of": 60
+      },
+      "status": "converted",
+      "targets": {
+        "duckdb": {
+          "dataflows_emitted": {
+            "count": 5,
+            "of": 6
+          },
+          "tasks_runnable": {
+            "count": 0,
+            "of": 4
+          }
+        },
+        "spark": {
+          "dataflows_emitted": {
+            "count": 5,
+            "of": 6
+          },
+          "tasks_runnable": {
+            "count": 0,
+            "of": 4
+          }
+        }
+      }
+    },
+    {
+      "expressions_parsed": {
+        "count": 10766,
+        "of": 10939
+      },
+      "files_verified": {
+        "count": 12,
+        "of": 12
+      },
+      "group": "hhs-informatica",
+      "inputs_accepted": {
+        "count": 12,
+        "of": 12
+      },
+      "license": "Unlicense",
+      "operations_mapped": {
+        "count": 1245,
+        "of": 1377
+      },
+      "status": "converted",
+      "targets": {
+        "duckdb": {
+          "dataflows_emitted": {
+            "count": 45,
+            "of": 108
+          },
+          "tasks_runnable": {
+            "count": 19,
+            "of": 115
+          }
+        },
+        "spark": {
+          "dataflows_emitted": {
+            "count": 45,
+            "of": 108
+          },
+          "tasks_runnable": {
+            "count": 19,
+            "of": 115
+          }
+        }
+      }
+    },
+    {
+      "expressions_parsed": {
+        "count": 2,
+        "of": 2
+      },
+      "files_verified": {
+        "count": 2,
+        "of": 2
+      },
+      "group": "mario-deno-informatica",
+      "inputs_accepted": {
+        "count": 2,
+        "of": 2
+      },
+      "license": "none-found",
+      "operations_mapped": {
+        "count": 4,
+        "of": 4
+      },
+      "status": "converted",
+      "targets": {
+        "duckdb": {
+          "dataflows_emitted": {
+            "count": 1,
+            "of": 1
+          },
+          "tasks_runnable": {
+            "count": 1,
+            "of": 2
+          }
+        },
+        "spark": {
+          "dataflows_emitted": {
+            "count": 1,
+            "of": 1
+          },
+          "tasks_runnable": {
+            "count": 1,
+            "of": 2
+          }
+        }
+      }
+    },
+    {
+      "expressions_parsed": {
+        "count": 79,
+        "of": 79
+      },
+      "files_verified": {
+        "count": 7,
+        "of": 7
+      },
+      "group": "northwind-dwh",
+      "inputs_accepted": {
+        "count": 7,
+        "of": 7
+      },
+      "license": "none-found",
+      "operations_mapped": {
+        "count": 122,
+        "of": 125
+      },
+      "status": "converted",
+      "targets": {
+        "duckdb": {
+          "dataflows_emitted": {
+            "count": 3,
+            "of": 7
+          },
+          "tasks_runnable": {
+            "count": 0,
+            "of": 0
+          }
+        },
+        "spark": {
+          "dataflows_emitted": {
+            "count": 3,
+            "of": 7
+          },
+          "tasks_runnable": {
+            "count": 0,
+            "of": 0
+          }
+        }
+      }
+    },
+    {
+      "expressions_parsed": {
+        "count": 51,
+        "of": 51
+      },
+      "files_verified": {
+        "count": 26,
+        "of": 26
+      },
+      "group": "powercenter-tasks",
+      "inputs_accepted": {
+        "count": 26,
+        "of": 26
+      },
+      "license": "none-found",
+      "operations_mapped": {
+        "count": 112,
+        "of": 121
+      },
+      "status": "converted",
+      "targets": {
+        "duckdb": {
+          "dataflows_emitted": {
+            "count": 9,
+            "of": 18
+          },
+          "tasks_runnable": {
+            "count": 2,
+            "of": 4
+          }
+        },
+        "spark": {
+          "dataflows_emitted": {
+            "count": 9,
+            "of": 18
+          },
+          "tasks_runnable": {
+            "count": 2,
+            "of": 4
+          }
+        }
+      }
+    }
+  ],
+  "ir_version": "0.2.0",
+  "manifest_sha256": "10b19c62fedc2ee8a4c79076acb323a2d6e9f216de28252367ecb533f4e97b71",
+  "totals": {
+    "expressions_parsed": {
+      "count": 10986,
+      "of": 11161
+    },
+    "files_verified": {
+      "count": 67,
+      "of": 67
+    },
+    "inputs_accepted": {
+      "count": 67,
+      "of": 67
+    },
+    "operations_mapped": {
+      "count": 1619,
+      "of": 1776
+    },
+    "targets": {
+      "duckdb": {
+        "dataflows_emitted": {
+          "count": 74,
+          "of": 157
+        },
+        "tasks_runnable": {
+          "count": 33,
+          "of": 145
+        }
+      },
+      "spark": {
+        "dataflows_emitted": {
+          "count": 74,
+          "of": 157
+        },
+        "tasks_runnable": {
+          "count": 33,
+          "of": 145
+        }
+      }
+    }
+  }
+}

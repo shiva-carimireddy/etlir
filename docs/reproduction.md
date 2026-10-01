@@ -36,6 +36,7 @@ PowerCenter, which would require authorized executions of the source platform.
 
 ```bash
 python scripts/fetch_corpus.py          # clones pinned commits, verifies 67 SHA-256 digests
+etlir corpus --out results/local/corpus  # re-verifies digests, converts every group, writes corpus.json
 etlir convert benchmarks/external/hhs-informatica --out out/hhs --target spark
 ```
 
@@ -43,6 +44,12 @@ Public exports ship without source data, so they are evaluated structurally (par
 resolution, canonical coverage, emission, traceability); see
 [benchmarks/protocol.md](../benchmarks/protocol.md). Several groups have no license:
 use them locally only and do not redistribute them.
+
+`corpus.json` holds one row per group and totals, every measure as a numerator and
+denominator (files verified, inputs accepted, operations mapped, expressions parsed, and
+per target dataflows emitted and tasks runnable), plus the blocker reasons ranked by
+occurrence with object names removed. It contains no timestamps or absolute paths, so two
+runs of the same release produce identical files.
 
 ## Determinism
 

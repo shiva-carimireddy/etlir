@@ -112,6 +112,10 @@ def run_package(
     logs = run_dir / "logs"
     logs.mkdir(exist_ok=True)
     writer = spark_writer or default_spark_writer()
+    # One start instant per run, so every task sees the same run_start_time.
+    run_start = os.environ.get("ETLIR_RUN_START_TIME") or dt.datetime.now(dt.UTC).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     results: list[dict[str, Any]] = []
     for p in plan["pipelines"]:
         if pipelines and p["id"] not in pipelines and p["name"] not in pipelines:
@@ -140,8 +144,16 @@ def run_package(
             elif t["command"] is None:
                 status[t["id"]] = rec["status"] = "blocked"
                 rec["reason"] = "no executable command"
+            elif t["command"].get("type") == "notify":
+                # A notification is recorded, never sent, by the reference runner.
+                status[t["id"]] = rec["status"] = "succeeded"
+                rec["note"] = "notification recorded, not sent (reference runner)"
             else:
-                rec.update(_execute(t, package, bindings, params, run_dir, logs, launcher, writer))
+                rec.update(
+                    _execute(
+                        t, package, bindings, params, run_dir, logs, launcher, writer, run_start
+                    )
+                )
                 status[t["id"]] = rec["status"]
             entry["tasks"].append(rec)
         states = [r["status"] for r in entry["tasks"]]
@@ -186,12 +198,19 @@ def _execute(
     logs: Path,
     launcher: str,
     writer: str,
+    run_start: str,
 ) -> dict[str, Any]:
     safe = task["name"].replace("/", "_")
     info = run_dir / "tasks" / f"{safe}.runtime.json"
     info.parent.mkdir(parents=True, exist_ok=True)
     argv, extra_env = _argv(task["command"], package, bindings, params, launcher)
-    env = {**os.environ, **extra_env, "ETLIR_SPARK_WRITER": writer, "ETLIR_TASK_INFO": str(info)}
+    env = {
+        **os.environ,
+        **extra_env,
+        "ETLIR_SPARK_WRITER": writer,
+        "ETLIR_TASK_INFO": str(info),
+        "ETLIR_RUN_START_TIME": run_start,
+    }
     started = dt.datetime.now(dt.UTC)
     t0 = time.perf_counter()
     with (logs / f"{safe}.log").open("w", encoding="utf-8") as log:

@@ -1,10 +1,23 @@
-# Known limitations (0.1.0)
+# Known limitations (0.2.0)
 
-* **Subset coverage.** Lookups, SQL overrides and row-aligned merges are supported, but
-  whole-dataflow coverage on real exports is still low: most blocked sessions combine
-  several unsupported constructs (update strategies, sequence generators, normalizers,
-  mapplets, `DECODE` and other functions, stateful variables). See the ranked list in
-  ROADMAP.md, and run `etlir convert` on your exports to see what blocks them.
+* **Subset coverage.** On the pinned public corpus, 74 of 157 dataflows are emitted
+  (`results/v0.2.0`). The rest combine constructs that are blocked on purpose: Normalizer
+  and VSAM/COBOL layouts, mapplets, variable ports whose value depends on row order,
+  Rank, custom code. Run `etlir convert` on your exports to see what blocks them.
+* **Row order.** Canonical relations are unordered. Constructs that depend on arrival
+  order are blocked (stateful variable ports, Aggregator ports that pass the last row) or
+  `APPROXIMATED`: a Sequence Generator numbers rows in a deterministic order (all columns
+  ascending), not PowerCenter's arrival order; the keys are unique and consecutive, but a
+  given row may receive a different key.
+* **State between runs is not persisted.** Sequence current values and mapping variables
+  changed with `SETVARIABLE` are run parameters (start values); ETLIR does not save the
+  final value for the next run.
+* **Keyed writes** (`update`/`upsert`) fail the task on duplicate keys in the input
+  instead of applying updates in an undefined order, and work on jsonl datasets in the
+  reference targets.
+* **Run-time values.** `SYSDATE` is read once at run start. `TO_DATE` on a malformed
+  string fails the run (PowerCenter rejects the row). Notification (Email) tasks are
+  recorded by the reference runner, never sent.
 * **Lookup order policies.** "Use First/Last Value" run only when keys are unique; with
   duplicate matches the task fails instead of guessing PowerCenter's cache order.
 * **SQL runs outside the source database.** Translated overrides assume binary collation

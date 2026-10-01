@@ -1,0 +1,22 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-sequence"
+title = "Sequence generators: keys through an expression, straight into a target with Reset, and one generator feeding two targets (one behind a DISTINCT sorter)"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/wf_surrogate_keys.xml"]
+partition = "behaviorally-comparable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = []
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:PEOPLE" = { format = "csv", path = "inputs/people.csv" }
+
+# Expected values follow the canonical sequence semantics (docs/semantics.md), derived by hand.
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:KEYED_A" = "expected/keyed_a.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:KEYED_B" = "expected/keyed_b.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:KEYED_C1" = "expected/keyed_c1.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:KEYED_C2" = "expected/keyed_c2.jsonl"

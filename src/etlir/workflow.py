@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from etlir.canonical.model import CanonicalDocument, Task
+from etlir.canonical.model import CanonicalDocument, Task, TaskKind
 from etlir.capabilities import CapabilityReport, CapabilityState
 
 PLAN_VERSION = 1
@@ -71,7 +71,11 @@ def build_workflow_plan(
                     "status": "blocked" if is_blocked else "runnable",
                     "reasons": task_reasons(t) if is_blocked else [],
                     "command": None
-                    if is_blocked or t.dataflow_id is None
+                    if is_blocked
+                    else {"type": "notify"}
+                    if t.kind is TaskKind.NOTIFY
+                    else None
+                    if t.dataflow_id is None
                     else commands[t.dataflow_id],
                     "depends_on": [
                         {"task_id": d.task_id, "condition": d.condition.value} for d in t.depends_on

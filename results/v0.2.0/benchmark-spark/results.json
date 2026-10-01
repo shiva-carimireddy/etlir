@@ -1,0 +1,747 @@
+{
+  "comparison_label": "specified-behavior agreement (not source-platform equivalence)",
+  "etlir_version": "0.2.0",
+  "rows": [
+    {
+      "case": "pc-expression-semantics",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "execution": {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:SEM_OUTPUT": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 20.359,
+        "status": "succeeded",
+        "tasks": {
+          "s_m_EXPRESSION_SEMANTICS": "succeeded"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 2,
+          "supported": 18
+        },
+        "dataflows": {
+          "emitted": 1,
+          "total": 1
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 4,
+          "of": 4
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 1,
+          "total": 1
+        },
+        "traceability": {
+          "emitted_operations": 4,
+          "traced": 4
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-function-semantics",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "execution": {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:FN_OUTPUT": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 23.438,
+        "status": "succeeded",
+        "tasks": {
+          "s_m_FUNCTION_SEMANTICS": "succeeded"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 2,
+          "supported": 57
+        },
+        "dataflows": {
+          "emitted": 1,
+          "total": 1
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 4,
+          "of": 4
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 1,
+          "total": 1
+        },
+        "traceability": {
+          "emitted_operations": 4,
+          "traced": 4
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-lookup-duplicate",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [
+            "PC-N-006"
+          ],
+          "expected": [
+            "PC-N-006"
+          ],
+          "ok": true
+        },
+        "execution": {
+          "actual": "failed",
+          "expected": "failed",
+          "ok": true
+        }
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 23.001,
+        "status": "failed",
+        "tasks": {
+          "s_m_FIRST_VALUE": "failed"
+        }
+      },
+      "partition": "locally-executable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 3,
+          "supported": 7
+        },
+        "dataflows": {
+          "emitted": 1,
+          "total": 1
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 6,
+          "of": 6
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 1,
+          "total": 1
+        },
+        "traceability": {
+          "emitted_operations": 6,
+          "traced": 6
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-lookups",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [
+            "PC-N-006"
+          ],
+          "expected": [
+            "PC-N-006"
+          ],
+          "ok": true
+        },
+        "execution": {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ORDER_ENRICHED": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 28.357,
+        "status": "succeeded",
+        "tasks": {
+          "s_m_ENRICH_ORDERS": "succeeded"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 6,
+          "supported": 29
+        },
+        "dataflows": {
+          "emitted": 1,
+          "total": 1
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 16,
+          "of": 16
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 1,
+          "total": 1
+        },
+        "traceability": {
+          "emitted_operations": 16,
+          "traced": 16
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-mixed-blocked",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [
+            "cmd_ARCHIVE",
+            "s_m_CUSTOMER_KEYS",
+            "s_m_CUSTOMER_OVERRIDE",
+            "s_m_NOT_ALIGNED"
+          ],
+          "expected": [
+            "cmd_ARCHIVE",
+            "s_m_CUSTOMER_KEYS",
+            "s_m_CUSTOMER_OVERRIDE",
+            "s_m_NOT_ALIGNED"
+          ],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [
+            "IR-V-010",
+            "IR-V-012"
+          ],
+          "expected": [
+            "IR-V-010",
+            "IR-V-012"
+          ],
+          "ok": true
+        },
+        "execution": {
+          "actual": "partial",
+          "expected": "partial",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:CUSTOMER_COPY": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 14.754,
+        "status": "partial",
+        "tasks": {
+          "cmd_ARCHIVE": "blocked",
+          "s_m_CUSTOMER_COPY": "succeeded",
+          "s_m_CUSTOMER_KEYS": "blocked",
+          "s_m_CUSTOMER_OVERRIDE": "blocked",
+          "s_m_NOT_ALIGNED": "blocked"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 6,
+          "constrained": 8,
+          "supported": 15
+        },
+        "dataflows": {
+          "emitted": 1,
+          "total": 4
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 3,
+          "of": 16
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 1,
+          "runnable": 0
+        },
+        "tasks": {
+          "runnable": 1,
+          "total": 5
+        },
+        "traceability": {
+          "emitted_operations": 3,
+          "traced": 3
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-orders",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "execution": {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:CUSTOMER_REVENUE": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:DIM_CUSTOMER": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:FACT_ORDERS_HIGH": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:FACT_ORDERS_STD": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 49.542,
+        "status": "succeeded",
+        "tasks": {
+          "s_m_CUSTOMER_REVENUE": "succeeded",
+          "s_m_LOAD_DIM_CUSTOMER": "succeeded",
+          "s_m_LOAD_FACT_ORDERS": "succeeded"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 8,
+          "supported": 44
+        },
+        "dataflows": {
+          "emitted": 3,
+          "total": 3
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 20,
+          "of": 20
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 3,
+          "total": 3
+        },
+        "traceability": {
+          "emitted_operations": 20,
+          "traced": 20
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-row-aligned",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [
+            "PC-N-006"
+          ],
+          "expected": [
+            "PC-N-006"
+          ],
+          "ok": true
+        },
+        "execution": {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ITEMS_OUT": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 16.567,
+        "status": "succeeded",
+        "tasks": {
+          "s_m_ROW_ALIGNED": "succeeded"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 2,
+          "supported": 10
+        },
+        "dataflows": {
+          "emitted": 1,
+          "total": 1
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 6,
+          "of": 6
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 1,
+          "total": 1
+        },
+        "traceability": {
+          "emitted_operations": 6,
+          "traced": 6
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-sequence",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "execution": {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:KEYED_A": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:KEYED_B": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:KEYED_C1": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:KEYED_C2": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 20.65,
+        "status": "succeeded",
+        "tasks": {
+          "s_m_SURROGATE_KEYS": "succeeded"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 5,
+          "supported": 14
+        },
+        "dataflows": {
+          "emitted": 1,
+          "total": 1
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 12,
+          "of": 12
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 1,
+          "total": 1
+        },
+        "traceability": {
+          "emitted_operations": 12,
+          "traced": 12
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-sql-overrides",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [
+            "PC-N-005"
+          ],
+          "expected": [
+            "PC-N-005"
+          ],
+          "ok": true
+        },
+        "execution": {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:DEPT_STATS": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:DEPT_STATUS": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:EMP_DEPT_OUT": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:EMP_EU": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 69.73,
+        "status": "succeeded",
+        "tasks": {
+          "s_m_SQL_AGG": "succeeded",
+          "s_m_SQL_FILTER": "succeeded",
+          "s_m_SQL_JOIN": "succeeded",
+          "s_m_SQL_UDJ": "succeeded"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 10,
+          "supported": 49
+        },
+        "dataflows": {
+          "emitted": 4,
+          "total": 4
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 27,
+          "of": 27
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 4,
+          "total": 4
+        },
+        "traceability": {
+          "emitted_operations": 27,
+          "traced": 27
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    },
+    {
+      "case": "pc-update-strategy",
+      "checks": {
+        "blocked_tasks": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "diagnostic_codes": {
+          "actual": [],
+          "expected": [],
+          "ok": true
+        },
+        "execution": {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "ok": true
+        }
+      },
+      "comparison": {
+        "outputs": {
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ACCOUNTS_UPD": "match",
+          "bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ACCOUNTS_UPS": "match"
+        },
+        "status": "agree"
+      },
+      "deterministic_conversion": true,
+      "execution": {
+        "duration_s": 27.471,
+        "status": "succeeded",
+        "tasks": {
+          "eml_ACCOUNTS_DONE": "succeeded",
+          "s_m_UPDATE_ACCOUNTS": "succeeded"
+        }
+      },
+      "partition": "behaviorally-comparable",
+      "provenance": "original-synthetic",
+      "summary": {
+        "construct_decisions": {
+          "approximated": 0,
+          "blocked": 0,
+          "constrained": 4,
+          "supported": 6
+        },
+        "dataflows": {
+          "emitted": 1,
+          "total": 1
+        },
+        "operations_in_emitted_dataflows": {
+          "count": 5,
+          "of": 5
+        },
+        "pipelines": {
+          "blocked": 0,
+          "partially-blocked": 0,
+          "runnable": 1
+        },
+        "tasks": {
+          "runnable": 2,
+          "total": 2
+        },
+        "traceability": {
+          "emitted_operations": 5,
+          "traced": 5
+        },
+        "version": "0.2.0"
+      },
+      "target": "spark"
+    }
+  ],
+  "summary": {
+    "deterministic_conversion": {
+      "count": 10,
+      "of": 10
+    },
+    "execution_as_expected": {
+      "count": 10,
+      "of": 10
+    },
+    "expectation_checks_passed": {
+      "count": 10,
+      "of": 10
+    },
+    "mutations_detected": {
+      "count": 0,
+      "of": 0
+    },
+    "output_agreement": {
+      "count": 9,
+      "of": 9
+    }
+  },
+  "targets": [
+    "spark"
+  ]
+}

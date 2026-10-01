@@ -1,0 +1,25 @@
+# Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
+id = "pc-update-strategy"
+title = "Data-driven session with DD_UPDATE: keyed update and upsert of existing targets"
+provenance = "original-synthetic"
+license = "Apache-2.0"
+source = "powercenter-xml"
+inputs = ["source/wf_update_accounts.xml"]
+partition = "behaviorally-comparable"
+
+[expect]
+blocked_tasks = []
+diagnostic_codes = []
+
+[bindings]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:src:FlatFile:ACCT_CHANGES" = { format = "csv", path = "inputs/acct_changes.csv" }
+
+# Both targets hold these rows before the run (a keyed write changes existing data).
+[seed]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ACCOUNTS_UPD" = "seed/accounts.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ACCOUNTS_UPS" = "seed/accounts.jsonl"
+
+# Expected values are derived by hand from the WriteOp semantics (docs/semantics.md).
+[outputs]
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ACCOUNTS_UPD" = "expected/accounts_upd.jsonl"
+"bind:ETLIR_SYNTH:ETLIR_DEMO:tgt:ACCOUNTS_UPS" = "expected/accounts_ups.jsonl"

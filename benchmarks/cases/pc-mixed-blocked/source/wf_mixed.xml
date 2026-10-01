@@ -87,7 +87,7 @@
                     <TABLEATTRIBUTE NAME="Start Value" VALUE="1" />
                     <TABLEATTRIBUTE NAME="Increment By" VALUE="1" />
                     <TABLEATTRIBUTE NAME="Current Value" VALUE="1" />
-                    <TABLEATTRIBUTE NAME="Cycle" VALUE="NO" />
+                    <TABLEATTRIBUTE NAME="Cycle" VALUE="YES" />
                     <TABLEATTRIBUTE NAME="Reset" VALUE="NO" />
                 </TRANSFORMATION>
                 <INSTANCE DESCRIPTION="" NAME="CUSTOMER_KEYS" TRANSFORMATION_NAME="CUSTOMER_KEYS" TRANSFORMATION_TYPE="Target Definition" TYPE="TARGET" />

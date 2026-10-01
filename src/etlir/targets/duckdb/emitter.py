@@ -15,6 +15,13 @@ from pathlib import Path
 from typing import Any
 
 from etlir import __version__ as _etlir_version
+from etlir.canonical.functions import (
+    LEADING_NUMBER_REGEX,
+    NUMBER_REGEX,
+    WHITESPACE_REGEX,
+    format_regex,
+    parse_format,
+)
 from etlir.canonical.model import (
     IR_VERSION,
     CallNode,
@@ -51,11 +58,13 @@ _SUPPORTED = [
             "join",
             "aggregate",
             "lookup",
+            "sequence",
         )
     ),
     *(f"lookup.{p}" for p in ("any", "error", "all")),
-    *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists")),
+    *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists", "update", "upsert")),
     "task.dataflow",
+    "task.notify",
     *(f"dependency.{c}" for c in ("success", "failure", "completion")),
     *(
         f"function.{f}"
@@ -79,12 +88,34 @@ _SUPPORTED = [
             "is_null",
             "if",
             "coalesce",
+            "case",
             "upper",
             "lower",
             "ltrim",
             "rtrim",
             "length",
             "substr",
+            "sign",
+            "lpad",
+            "rpad",
+            "instr",
+            "translate",
+            "replace",
+            "replace_ci",
+            "chr",
+            "matches_number",
+            "is_whitespace",
+            "leading_decimal",
+            "to_string",
+            "format_timestamp",
+            "parse_timestamp",
+            "can_parse_timestamp",
+            "trunc",
+            "round",
+            "trunc_timestamp",
+            "add_interval",
+            "timestamp_part",
+            "fail",
             "sum",
             "count",
             "count_all",
@@ -96,6 +127,7 @@ _SUPPORTED = [
     *(f"cast.{t}" for t in ("integer", "bigint", "decimal", "double", "boolean")),
 ]
 _CONSTRAINED = {
+    "task.notify": ["the reference runner records the notification; it does not send it"],
     "operation.read": ["every column has a known type", "binding format is csv or jsonl"],
     "operation.write": ["binding format is jsonl"],
 }
@@ -105,7 +137,7 @@ def manifest(version: str) -> CapabilityManifest:
     return CapabilityManifest(
         target=TARGET_ID,
         target_version=version,
-        ir_versions=">=0.1,<0.2",
+        ir_versions=">=0.2,<0.3",
         rules=[
             CapabilityRule(
                 construct_id=c,
@@ -223,6 +255,9 @@ def lower(
         return f"({a[0]} IS NULL)"
     if fn == "if":
         return f"(CASE WHEN {a[0]} THEN {a[1]} ELSE {a[2]} END)"
+    if fn == "case":
+        arms = " ".join(f"WHEN {c} THEN {v}" for c, v in zip(a[:-1:2], a[1:-1:2], strict=True))
+        return f"(CASE {arms} ELSE {a[-1]} END)"
     if fn == "concat":
         all_null = " AND ".join(f"{x} IS NULL" for x in a)
         joined = " || ".join(f"COALESCE({x}, '')" for x in a)
@@ -240,6 +275,115 @@ def lower(
         )
     if fn == "count_all":
         return "count(*)"
+    return _extended(node, a, [infer(x, env, penv) for x in node.args])
+
+
+def _literal(node: CallNode, i: int) -> Any:
+    arg = node.args[i]
+    if not isinstance(arg, LiteralNode) or arg.value is None:
+        raise Unlowerable(f"{node.function} argument {i + 1} must be a non-NULL literal")
+    return arg.value
+
+
+_STRFTIME = {
+    "YYYY": "%Y",
+    "YY": "%y",
+    "MM": "%m",
+    "DD": "%d",
+    "HH24": "%H",
+    "MI": "%M",
+    "SS": "%S",
+}
+_UNITS = ("year", "month", "day", "hour", "minute", "second")
+_PUNCT = set("""!"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~""")
+
+
+def _format(fmt: str) -> tuple[str, str]:
+    """Canonical timestamp format -> (strftime/strptime format, strict match regex)."""
+    tokens = parse_format(fmt)
+    if tokens is None:
+        raise Unlowerable(f"timestamp format {fmt!r} is outside the canonical token set")
+    return "".join(_STRFTIME.get(t, t) for t in tokens), format_regex(tokens)
+
+
+def _unit(node: CallNode, i: int) -> str:
+    unit = str(_literal(node, i))
+    if unit not in _UNITS:
+        raise Unlowerable(f"unknown time unit {unit!r}")
+    return unit
+
+
+def _extended(node: CallNode, a: list[str], arg_types: list[DataType]) -> str:
+    fn = node.function
+    if fn == "sign":
+        return f"CAST(sign({a[0]}) AS INTEGER)"
+    if fn in ("lpad", "rpad"):
+        return (
+            f"(CASE WHEN {a[0]} IS NULL OR {a[1]} IS NULL THEN NULL WHEN {a[1]} <= 0 THEN '' "
+            f"ELSE {fn}({a[0]}, {a[1]}, {lit(str(_literal(node, 2)))}) END)"
+        )
+    if fn == "instr":
+        start = int(_literal(node, 2))
+        found = f"instr(substring({a[0]}, {start}), {a[1]})"
+        return (
+            f"(CASE WHEN {a[0]} IS NULL OR {a[1]} IS NULL THEN NULL WHEN {a[1]} = '' THEN 0 "
+            f"WHEN {found} = 0 THEN 0 ELSE {found} + {start - 1} END)"
+        )
+    if fn == "translate":
+        return f"translate({a[0]}, {lit(str(_literal(node, 1)))}, {lit(str(_literal(node, 2)))})"
+    if fn == "replace":
+        return f"replace({a[0]}, {lit(str(_literal(node, 1)))}, {lit(str(_literal(node, 2)))})"
+    if fn == "replace_ci":
+        old, new = str(_literal(node, 1)), str(_literal(node, 2))
+        pattern = "".join("\\" + c if c in _PUNCT else c for c in old)
+        replacement = lit(new.replace("\\", "\\\\"))  # RE2 rewrite strings escape only "\"
+        return f"regexp_replace({a[0]}, {lit(pattern)}, {replacement}, 'gi')"
+    if fn == "chr":
+        return f"(CASE WHEN {a[0]} BETWEEN 1 AND 127 THEN chr(CAST({a[0]} AS INTEGER)) END)"
+    if fn in ("matches_number", "is_whitespace"):
+        regex = NUMBER_REGEX if fn == "matches_number" else WHITESPACE_REGEX
+        return f"regexp_matches({a[0]}, {lit(regex)})"
+    if fn == "leading_decimal":
+        scale = int(_literal(node, 1))
+        prefix = f"regexp_extract({a[0]}, {lit(LEADING_NUMBER_REGEX)}, 1)"
+        value = f"CAST(CASE WHEN {prefix} = '' THEN '0' ELSE {prefix} END AS DECIMAL(38,18))"
+        return f"CAST(round({value}, {scale}) AS DECIMAL(38,{scale}))"
+    if fn == "to_string":
+        if arg_types[0].kind is TypeKind.DECIMAL:  # no trailing fractional zeros
+            text = f"CAST({a[0]} AS VARCHAR)"
+            return (
+                f"(CASE WHEN strpos({text}, '.') > 0 "
+                f"THEN rtrim(rtrim({text}, '0'), '.') ELSE {text} END)"
+            )
+        return f"CAST({a[0]} AS VARCHAR)"
+    if fn == "format_timestamp":
+        return f"strftime({a[0]}, {lit(_format(_literal(node, 1))[0])})"
+    if fn in ("parse_timestamp", "can_parse_timestamp"):
+        if "YY" in (parse_format(str(_literal(node, 1))) or []):
+            raise Unlowerable("a two-digit year cannot be parsed (no century)")
+        fmt, regex = _format(_literal(node, 1))
+        parsed = f"try_strptime({a[0]}, {lit(fmt)})"
+        ok = f"regexp_matches({a[0]}, {lit(regex)}) AND {parsed} IS NOT NULL"
+        if fn == "can_parse_timestamp":
+            return f"(CASE WHEN {a[0]} IS NULL THEN NULL ELSE {ok} END)"
+        message = lit(f"cannot parse timestamp with format {fmt}: ")
+        return (
+            f"(CASE WHEN {a[0]} IS NULL THEN NULL WHEN {ok} THEN {parsed} "
+            f"ELSE error({message} || {a[0]}) END)"
+        )
+    if fn in ("trunc", "round"):
+        st = sql_type(arg_types[0])
+        body = f"{fn}({a[0]}, {int(_literal(node, 1))})"
+        return f"CAST({body} AS {st})" if st else body
+    if fn == "trunc_timestamp":
+        return f"date_trunc({lit(_unit(node, 1))}, {a[0]})"
+    if fn == "add_interval":
+        unit = _unit(node, 1)
+        return f"({a[0]} + to_{unit}s({a[2]}))"
+    if fn == "timestamp_part":
+        return f"CAST(date_part({lit(_unit(node, 1))}, {a[0]}) AS INTEGER)"
+    if fn == "fail":
+        return f"error({lit(str(_literal(node, 0)))})"
     raise Unlowerable(f"function {fn}")
 
 
@@ -261,7 +405,7 @@ class _Job:
         self.lines: list[str] = []
         self.op_lines: dict[str, int] = {}
         self.reads: dict[str, list[tuple[str, str]]] = {}
-        self.writes: list[tuple[str, str, str]] = []
+        self.writes: list[tuple[str, str, str, list[str], list[str]]] = []
         used = sorted({p.id for p in doc.parameters})
         self.params = {
             pid: (f"p{i + 1}", sql_type(p.type) or "VARCHAR")
@@ -354,7 +498,10 @@ class _Job:
             )
             view = f"w{len(self.writes) + 1}"
             self.create(view, f"SELECT {items} FROM {self.src(ref)}")
-            self.writes.append((ds.binding_id or ds.id, view, spec.mode.value))
+            provided = [c.name for c in ds.columns if c.name in present]
+            self.writes.append(
+                (ds.binding_id or ds.id, view, spec.mode.value, list(spec.keys), provided)
+            )
         elif s.kind == "lookup":
             i_src, l_src = self.src(s.inputs["in"]), self.src(s.inputs["lookup"])
             rets = {m.to_column: q(m.from_column) for m in spec.returns}
@@ -409,6 +556,21 @@ class _Job:
                 self.create(
                     self.view(s.output_relation()),
                     f"SELECT {cols(s.outputs[0].columns, assigned)} FROM {src}",
+                )
+            elif s.kind == "sequence":
+                order = ", ".join(f"{q(c.name)} ASC NULLS FIRST" for c in s.inputs["in"].columns)
+                var, _ = self.params[spec.start_parameter_id]
+                number = (
+                    f"CAST(getvariable({lit(var)}) AS BIGINT) + "
+                    f"(row_number() OVER (ORDER BY {order}) - 1) * {spec.increment}"
+                )
+                if "after" in s.inputs:
+                    after = self.src(s.inputs["after"])
+                    number += f" + (SELECT count(*) FROM {after}) * {spec.increment}"
+                self.create(
+                    self.view(s.output_relation()),
+                    f"SELECT {cols(s.outputs[0].columns)} FROM "
+                    f"(SELECT *, CAST({number} AS BIGINT) AS {q(spec.column)} FROM {src})",
                 )
             elif s.kind == "filter":
                 self.create(
@@ -480,7 +642,9 @@ def preflight(doc: CanonicalDocument, df_id: str) -> list[str]:
     return reasons
 
 
-def _launcher(df_id: str, sql: str, job: _Job, defaults: dict[str, Any]) -> str:
+def _launcher(
+    df_id: str, sql: str, job: _Job, defaults: dict[str, Any], builtins: Mapping[str, str]
+) -> str:
     spec = {
         "dataflow_id": df_id,
         "sql": sql,
@@ -488,6 +652,7 @@ def _launcher(df_id: str, sql: str, job: _Job, defaults: dict[str, Any]) -> str:
         "writes": job.writes,
         "params": job.params,
         "defaults": defaults,
+        "builtins": builtins,
     }
     return "\n".join(
         [
@@ -514,7 +679,7 @@ class DuckDBEmitter(TargetEmitter):
 
     id = TARGET_ID
     version = _etlir_version
-    ir_versions = ">=0.1,<0.2"
+    ir_versions = ">=0.2,<0.3"
     description = "DuckDB SQL (local reference profile, no JVM)"
 
     def capabilities(self) -> CapabilityManifest:
@@ -525,6 +690,7 @@ class DuckDBEmitter(TargetEmitter):
         report = analyze(document, self.capabilities(), extra)
         blocked = set(report.blocked_dataflow_ids)
         defaults = {p.id: p.default for p in document.parameters if p.default is not None}
+        builtins = {p.id: p.builtin for p in document.parameters if p.builtin}
         taken: set[str] = set()
         files: dict[str, str] = {}
         jobs: list[dict[str, Any]] = []
@@ -555,7 +721,7 @@ class DuckDBEmitter(TargetEmitter):
                 )
                 continue
             files[f"sql/{name}.sql"] = sql
-            files[f"jobs/{name}.py"] = _launcher(df.id, f"sql/{name}.sql", job, defaults)
+            files[f"jobs/{name}.py"] = _launcher(df.id, f"sql/{name}.sql", job, defaults, builtins)
             jobs.append(
                 {
                     "dataflow_id": df.id,

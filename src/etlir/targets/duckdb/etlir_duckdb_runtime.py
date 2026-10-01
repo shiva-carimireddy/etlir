@@ -8,7 +8,9 @@ each target relation as JSON Lines. Depends only on the ``duckdb`` package.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
+import os
 import shutil
 import sys
 import traceback
@@ -31,6 +33,57 @@ def _lit(value: str) -> str:
 def _path(bindings_file: Path, binding: dict[str, Any]) -> Path:
     p = Path(binding["path"])
     return p if p.is_absolute() else (bindings_file.parent / p).resolve()
+
+
+_JOB_START = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _merge_keyed(
+    con: duckdb.DuckDBPyConnection,
+    relation: str,
+    target: Path,
+    mode: str,
+    keys: list[str],
+    provided: list[str],
+) -> str:
+    """Keyed update/upsert of an existing jsonl dataset (see WriteOp in the Canonical IR);
+    returns a table holding the dataset's new content."""
+    key_list = ", ".join(_q(k) for k in keys)
+    dupes = con.execute(
+        f"SELECT {key_list} FROM {_q(relation)} GROUP BY ALL HAVING count(*) > 1 LIMIT 1"
+    ).fetchall()
+    if dupes:
+        raise ValueError(f"duplicate keys {keys} in rows written: {dupes[0]}")
+    described = con.execute(f"DESCRIBE {_q(relation)}").fetchall()
+    names = [str(d[0]) for d in described]
+    if target.exists() and any(target.glob("*.json")):
+        cols = "{" + ", ".join(f"{_lit(str(n))}: {_lit(str(t))}" for n, t, *_ in described) + "}"
+        src = (
+            f"read_json({_lit(str(target / '*.json'))}, columns={cols}, format='newline_delimited')"
+        )
+    else:
+        src = f"(SELECT * FROM {_q(relation)} WHERE FALSE)"
+    con.execute(f"CREATE TEMP TABLE __old AS SELECT * FROM {src}")
+    on = " AND ".join(f"o.{_q(k)} = n.{_q(k)}" for k in keys)
+    items = ", ".join(
+        f"CASE WHEN n.__matched THEN n.{_q(c)} ELSE o.{_q(c)} END AS {_q(c)}"
+        if c in provided and c not in keys
+        else f"o.{_q(c)} AS {_q(c)}"
+        for c in names
+    )
+    body = (
+        f"SELECT {items} FROM __old AS o "
+        f"LEFT JOIN (SELECT *, TRUE AS __matched FROM {_q(relation)}) AS n ON {on}"
+    )
+    if mode == "upsert":
+        body += (
+            f" UNION ALL SELECT * FROM {_q(relation)} AS n "
+            f"WHERE NOT EXISTS (SELECT 1 FROM __old AS o WHERE {on})"
+        )
+    merged = f"__merged_{relation}"
+    con.execute(f"CREATE TEMP TABLE {_q(merged)} AS {body}")
+    con.execute("DROP TABLE __old")
+    return merged
 
 
 def run(job: dict[str, Any]) -> None:
@@ -72,16 +125,22 @@ def run(job: dict[str, Any]) -> None:
                 value = params[pid]
             elif pid in job["defaults"]:
                 value = job["defaults"][pid]
+            elif job.get("builtins", {}).get(pid) == "run_start_time":
+                value = os.environ.get("ETLIR_RUN_START_TIME") or _JOB_START
             else:
                 raise KeyError(f"parameter '{pid}' has no value and no default")
             con.execute(f"SET VARIABLE {var} = CAST({_lit(str(value))} AS {sql_type})")
         sql = (Path(__file__).resolve().parent / job["sql"]).read_text("utf-8")
         con.execute(sql)
-        for binding_id, relation, mode in job["writes"]:
+        for binding_id, relation, mode, *keyed in job["writes"]:
             b = bindings[binding_id]
             if b.get("format", "jsonl") != "jsonl":
                 raise ValueError("the DuckDB runtime writes jsonl outputs only")
             target = _path(args.bindings, b)
+            keys, provided = keyed if keyed else ([], [])
+            if keys:
+                relation = _merge_keyed(con, relation, target, mode, keys, provided)
+                mode = "overwrite"
             if target.exists():
                 if mode == "error_if_exists":
                     raise FileExistsError(str(target))

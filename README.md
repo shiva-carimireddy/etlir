@@ -11,11 +11,11 @@ cannot express are reported and **blocked**, never silently dropped or approxima
 [![CI](https://github.com/shiva-carimireddy/etlir/actions/workflows/ci.yml/badge.svg)](https://github.com/shiva-carimireddy/etlir/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-> **Status: 0.1.0 (alpha, research software).** The first reference pair, **Informatica
+> **Status: 0.2.0 (alpha, research software).** The first reference pair, **Informatica
 > PowerCenter XML → Apache Spark**, runs end to end for a documented subset, with a second
 > target (**DuckDB**) generated from the same Canonical IR. Outside that subset, ETLIR
 > reports and blocks instead of guessing. Do not use it for production migrations without
-> your own validation. See [what works](#what-works-in-010) and
+> your own validation. See [what works](#what-works-in-020) and
 > [limitations](docs/limitations.md).
 
 ## How it works
@@ -84,25 +84,34 @@ etlir inspect path/to/exports/                 # inventory only
 etlir convert path/to/exports/ --out out/mine  # every stage + report.html
 ```
 
-## What works in 0.1.0
+## What works in 0.2.0
 
 **PowerCenter subset** ([details](docs/sources/powercenter.md)): flat-file and relational
 sources and targets; Source Qualifier including SQL overrides, source filters,
 user-defined joins and SELECT DISTINCT (a SQLGlot-parsed subset, including Oracle `(+)`
 joins and GROUP BY aggregates); connected and unconnected (`:LKP`) Lookups, including
 SQL-override and range lookups; Expression (stateless variable ports), Filter, Router,
-Joiner, Aggregator; row-aligned merges of several branches; mapping parameters and
-run-constant mapping variables; sessions and workflows with success/failure/unconditional
-links; cross-file resolution; a typed parser for a documented expression subset.
+Joiner, Aggregator (with and without group-by), Sorter, Sequence Generator, Update Strategy
+with keyed update/upsert targets; row-aligned merges of several branches; mapping
+parameters and variables as run parameters; `SESSSTARTTIME`/`SYSDATE` and `$PM…` values;
+sessions and workflows with success/failure/unconditional links and Email tasks;
+cross-file resolution; a typed parser for the expression language including `DECODE`,
+`IIF`, `IN`, string, number and date functions ([function table](docs/sources/powercenter.md#expression-language-subset)).
+
+**Measured on the pinned public corpus** with `etlir corpus` (protocol v1,
+[results/v0.2.0](results/v0.2.0/tables.md)): 74 of 157 dataflows emitted and 33 of 145
+tasks runnable on both targets; 1,619 of 1,776 operations mapped. Everything else is
+blocked with a recorded reason.
 
 **Targets** ([details](docs/targets.md), [support matrix](docs/support-matrix.md)):
 PySpark DataFrame jobs (`spark-submit`, Spark 4.2 / Java 17) and DuckDB SQL, both
 executed by a reference workflow runner.
 
-**Blocked with reasons:** Update Strategy, Sequence Generator, Normalizer, Sorter, Rank,
-mapplets, dynamic lookup caches, SQL outside the accepted subset (subqueries, `SELECT *`,
-…), stateful variables, command/email/event tasks, custom link conditions, and functions
-outside the expression subset (`DECODE`, `TO_CHAR`, `LPAD`, date functions, …).
+**Blocked with reasons:** Normalizer and VSAM/COBOL layouts, mapplets, Rank, Custom
+Transformation and Stored Procedure, dynamic lookup caches, SQL outside the accepted
+subset (subqueries, `SELECT *`, …), variable ports that depend on row order (counters,
+previous-row values), row-level update strategies, command and event tasks, custom link
+conditions, and functions outside the documented subset.
 
 **Covered by the test suite:** secure XML loading (XXE and entity expansion rejected); Raw IR
 preservation; byte-identical repeat conversions; conformance of both emitters; output

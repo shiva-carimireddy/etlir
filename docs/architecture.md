@@ -39,7 +39,7 @@ generated runtime helpers (etlir_*_runtime.py) -> no etlir import at all
 A target emitter receives a `CanonicalDocument` only. Target-specific choices live in the
 target plan, never in the Canonical IR. The schema is checked for product vocabulary.
 
-## Canonical IR (0.1.0)
+## Canonical IR (0.2.0)
 
 Two separate graphs:
 
@@ -52,7 +52,7 @@ Entities also include `Dataset`, `Expression` (typed AST), `Parameter`, `Binding
 (runtime reference, never a secret) and `LineageEdge`. Semantics are defined in
 [semantics.md](semantics.md).
 
-**Invariants** (`IR-V-001`…`IR-V-017`): every entity has a source trace; identifiers are
+**Invariants** (`IR-V-001`…`IR-V-019`): every entity has a source trace; identifiers are
 unique; references resolve; both graphs are acyclic; reads have no inputs and writes no
 outputs; sensitive parameters have no defaults; functions exist in the catalog with the
 right arity, and aggregates appear only in aggregations; every column resolves; join

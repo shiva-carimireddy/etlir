@@ -2,50 +2,38 @@
 
 Status changes only when the listed evidence exists in the repository.
 
-| Gate | Scope | Status (0.1.0) |
+| Gate | Scope | Status (0.2.0) |
 |---|---|---|
 | **G0** Repository/corpus audit | License, contribution model, ADRs, corpus manifest | **Done.** Corpus pinned by commit and SHA-256 (67 files, 7 groups) with license findings in `benchmarks/corpus.toml`. |
 | **G1** Secure ingestion | Inventory, Raw IR, identities, multi-file symbol table, malformed/XXE tests | **Done** for the documented scope; Raw IR preservation passes on all pinned public files. |
 | **G2** Canonical slice | Schema, contracts, graphs, expression AST, parameters, provenance, validators | **Done** for the subset in `docs/sources/powercenter.md`. |
 | **G3** Spark emission | Emitter, manifest, jobs, workflow plan + runner, package validation, fail closed | **Done**, plus a second emitter (DuckDB, ADR-0006). |
-| **G4** Independent execution | Pinned environment, controlled inputs, independent expectations, comparator, mutations | **Done** on seven synthetic cases on both targets, including an expected-failure case; mutation analysis in the benchmark. A container image is not yet published. |
-| **G5** Public corpus evaluation | Frozen protocol, per-file/per-workflow rows, timings, analysis script | **Open.** Tooling for structural evaluation exists; the protocol is not frozen and no results are published. |
-| **G6** Paper/release | Tagged release, archived DOI, claims audited against artifacts | **Open.** 0.1.0 is the first release candidate. |
+| **G4** Independent execution | Pinned environment, controlled inputs, independent expectations, comparator, mutations | **Done** on ten synthetic cases on both targets, including an expected-failure case and seeded keyed writes; mutation analysis in the benchmark. A container image is not yet published. |
+| **G5** Public corpus evaluation | Frozen protocol, per-group rows, analysis script | **Done.** Protocol v1 frozen (`benchmarks/protocol.md`); `etlir corpus`, `scripts/collect_results.py` and `scripts/paper_tables.py`; results in `results/v0.2.0/`. Timings and memory are out of scope for v1. |
+| **G6** Paper/release | Tagged release, archived DOI, claims audited against artifacts | **Open** until the 0.2.0 tag is archived with a DOI and the paper cites it. |
 
-## Done since the first commit
+## 0.2.0 in one paragraph
 
-Lookups (connected and unconnected, SQL-override and range lookups), SQL overrides
-(SQLGlot), row-aligned merge fusion, run-constant mapping variables. Development
-measurement on the pinned public corpus (not a publication result; the protocol is not
-frozen): unsupported operations 544 → 258 of 1,725 (lookups 145 → 11, source qualifiers
-95 → 17, merged expressions 87 → 21); fully emittable dataflows 18 → 25 of 157. Of the
-emitted real-corpus dataflows, 24 of 25 execute on empty inputs on both Spark and DuckDB;
-the other stops correctly because it reads its own not-yet-written target.
+The expression language (`DECODE`, two-argument `IIF`, `IN`, string, number and date
+functions, run-time values), Update Strategy with keyed writes, Sequence Generator,
+Sorter, global aggregators and Email tasks. On the pinned public corpus (protocol v1,
+`results/v0.2.0/corpus/corpus.json`): dataflows emitted 74 of 157 (0.1.0: 25) and tasks
+runnable 33 of 145 (0.1.0: 9) on both targets.
 
-## Next, ordered by how many blocked dataflows each construct affects
+## Next
 
-Measured on the 132 public-corpus dataflows still blocked. 97 of them have two or more
-independent blockers, so whole-dataflow coverage rises in steps.
+The remaining blockers, ranked by occurrence in `results/v0.2.0/tables.md`, need new
+semantics rather than more mappings:
 
-| Construct | Blocked dataflows affected |
-|---|---|
-| `DECODE` | 39 |
-| Normalizer | 35 |
-| `SETVARIABLE` (stateful mapping variables) | 30 |
-| `IIF` without else | 25 |
-| VSAM / COBOL sources | 24 |
-| `SESSSTARTTIME`, `SYSDATE` (run-time values) | 21, 8 |
-| Sequence Generator | 20 |
-| Update Strategy | 18 |
-| `LPAD`, `TO_CHAR`, `IS_DATE`, `IS_NUMBER`, `TO_DECIMAL` | 16, 15, 9, 9, 7 |
-| Aggregator without group-by | 15 |
-
-Planned order: expression functions with clear semantics (`DECODE`, 2-argument `IIF`,
-`SIGN`, `LPAD`/`RPAD`, `TO_CHAR`/`TO_DECIMAL` with formats) and run-time values as explicit
-run parameters (`SESSSTARTTIME`); then Sequence Generator (start value as a run parameter
-plus row numbering, `APPROXIMATED` for order) and Update Strategy (insert/update/delete as
-canonical write modes); then Normalizer and mapplet expansion. G5: freeze the protocol, add
-per-file/per-workflow rows and timings, and publish a frozen results release.
+1. **Row-order semantics.** Variable ports that read the previous row (counters,
+   carry-forward of header values, previous keys) and Aggregator ports that pass the last
+   row. This needs an explicit, verifiable order through the pipeline (file order or a
+   declared sort), not an assumed one.
+2. **Mainframe layouts.** VSAM/COBOL sources and the Normalizer (`OCCURS`), with a
+   fixed-width reader for the reference targets.
+3. **Mapplet expansion** (inline mapplets as sub-dataflows).
+4. Rank (top-N per group with an explicit tie policy), the `FIRST`/`LAST` aggregates, SQL
+   subqueries, two-digit-year parsing with an explicit century rule.
 
 ## Later
 

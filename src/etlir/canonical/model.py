@@ -20,7 +20,7 @@ from typing import Annotated, Final, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
-IR_VERSION: Final = "0.1.0"
+IR_VERSION: Final = "0.2.0"
 
 Identifier = Annotated[
     str,
@@ -83,7 +83,9 @@ class Column(_Model):
 class LiteralNode(_Model):
     node: Literal["literal"] = "literal"
     value: str | int | bool | None = Field(
-        description="Literal value. Decimals and timestamps are encoded as strings."
+        default=None,
+        description="Literal value (absent or null for NULL). Decimals and timestamps are "
+        "encoded as strings.",
     )
     type: DataType
 
@@ -150,6 +152,8 @@ class WriteMode(StrEnum):
     APPEND = "append"
     OVERWRITE = "overwrite"
     ERROR_IF_EXISTS = "error_if_exists"
+    UPDATE = "update"
+    UPSERT = "upsert"
 
 
 class Assignment(_Model):
@@ -175,11 +179,18 @@ class ReadOp(_Model):
 
 
 class WriteOp(_Model):
-    """Write the input to ``dataset_id``. Dataset columns without an input column are NULL."""
+    """Write the input to ``dataset_id``. Dataset columns without an input column are NULL.
+
+    Keyed modes match input rows to existing rows on ``keys`` (plain equality, so NULL keys
+    never match): ``update`` sets the input's columns on matching rows and discards input
+    rows without a match; ``upsert`` also inserts them. Columns the input does not provide
+    keep their existing values. Duplicate keys in the input fail the task.
+    """
 
     kind: Literal["write"] = "write"
     dataset_id: Identifier
     mode: WriteMode = WriteMode.APPEND
+    keys: list[str] = Field(default_factory=list, description="Key columns of keyed modes.")
 
 
 class ProjectOp(_Model):
@@ -264,6 +275,20 @@ class AggregateOp(_Model):
     aggregations: list[Aggregation]
 
 
+class SequenceOp(_Model):
+    """Pass the input through and add ``column`` (bigint): the input rows, ordered by all
+    their columns ascending with NULLs first, receive start, start + increment, … where
+    start is the value of parameter ``start_parameter_id``. Rows that are equal in every
+    column are interchangeable, so the result is deterministic. When slot ``after`` is
+    connected, numbering continues after as many values as ``after`` has rows (start +
+    count(after) * increment): two consumers of one generator get consecutive blocks."""
+
+    kind: Literal["sequence"] = "sequence"
+    column: str
+    start_parameter_id: Identifier
+    increment: int = 1
+
+
 class UnionOp(_Model):
     kind: Literal["union"] = "union"
     distinct: bool = False
@@ -289,6 +314,7 @@ OperationSpec = Annotated[
         LookupOp,
         AggregateOp,
         UnionOp,
+        SequenceOp,
         UnsupportedOp,
     ],
     Field(discriminator="kind"),
@@ -426,6 +452,11 @@ class Parameter(_Model):
     type: DataType
     default: str | None = Field(default=None, description="Never populated for sensitive values.")
     sensitive: bool = False
+    builtin: Literal["run_start_time"] | None = Field(
+        default=None,
+        description="Value supplied by the runtime when the run does not set it: "
+        "run_start_time is the run's start instant (UTC), identical for every task of a run.",
+    )
     source: SourceRef
 
 
@@ -454,7 +485,7 @@ class LineageEdge(_Model):
 
 
 class CanonicalDocument(_Model):
-    ir_version: Literal["0.1.0"] = IR_VERSION
+    ir_version: Literal["0.2.0"] = IR_VERSION
     pipelines: list[Pipeline] = Field(default_factory=list)
     dataflows: list[Dataflow] = Field(default_factory=list)
     datasets: list[Dataset] = Field(default_factory=list)

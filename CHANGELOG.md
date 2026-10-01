@@ -5,6 +5,55 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/). The Canonical IR has its own version; see
 [ADR-0004](docs/decisions/0004-versioning-and-compatibility.md).
 
+## [0.2.0] - 2026-09-30
+
+Coverage release: the expression language, update strategies, sequence generators,
+sorters and global aggregators; a frozen evaluation protocol (v1) with committed results.
+Canonical IR 0.2.0 (new functions, `sequence` operation, keyed write modes,
+`Parameter.builtin`, IR-V-018/019; 0.1.0 documents are not read by 0.2.0).
+
+### Added
+
+- Canonical function catalog: `case`, `sign`, `trunc`, `round`, `lpad`, `rpad`, `instr`,
+  `translate`, `replace`, `replace_ci`, `chr`, `matches_number`, `is_whitespace`,
+  `leading_decimal`, `to_string`, `format_timestamp`, `parse_timestamp`,
+  `can_parse_timestamp`, `trunc_timestamp`, `add_interval`, `timestamp_part`, `fail`, with
+  lowerings in both targets and engine differences resolved explicitly
+  (docs/semantics.md). Arguments that fix a call's meaning must be literals (IR-V-014).
+- Built-in parameters (`Parameter.builtin = "run_start_time"`): the runner gives every task
+  of a run the same start instant.
+- PowerCenter: `DECODE`, two-argument `IIF`, `IN`, `SIGN`, `LPAD`/`RPAD`, `INSTR`,
+  `REPLACECHR`/`REPLACESTR`, `CHR`, `IS_NUMBER`, `IS_SPACES`, `IS_DATE`, `TO_DATE`,
+  `TO_CHAR`, `TO_DECIMAL`, `TO_INTEGER`, `TRUNC`, `ROUND`, `ADD_TO_DATE`, `GET_DATE_PART`,
+  `ABORT`, `SETVARIABLE`, `SESSSTARTTIME`, `SYSDATE`, `$PM…` names, mapping variables as run
+  parameters, empty output expressions, whole numbers into string ports.
+- Benchmark case `pc-function-semantics`: a hand-derived truth table for the new functions
+  on every target.
+- Keyed writes: `WriteOp` modes `update` and `upsert` with `keys`, in both targets.
+  PowerCenter Update Strategy with constant row operations and data-driven sessions.
+- Canonical `sequence` operation; PowerCenter Sequence Generator (deterministic numbering,
+  start value as a run parameter, consecutive blocks for two consumers). PowerCenter
+  Sorter (pass-through, or DISTINCT).
+- `to_string` on fractional decimals; `YY` in timestamp formatting.
+- Notification tasks (PowerCenter Email) run in the reference runner as recorded, unsent
+  notifications (`task.notify`, constrained).
+- PowerCenter Aggregator without group-by ports (no row for empty input), unknown `$PM…`
+  variables as run parameters, booleans into string ports, unused unconnected ports.
+- Invariants IR-V-018 (missing input) and IR-V-019 (keyed write keys); a dataflow violating
+  a structural invariant is blocked instead of emitted.
+- Evaluation protocol v1 frozen; `scripts/collect_results.py` produces
+  `results/v<version>/` and `scripts/paper_tables.py` renders its tables. `python -m etlir`.
+- `etlir corpus`: verifies the pinned corpus digests, converts every group, and writes a
+  deterministic `corpus.json` (per-group rows, totals, ranked blocker reasons).
+- Benchmark manifests can seed existing target content (`[seed]`). New cases
+  `pc-update-strategy` and `pc-sequence`.
+
+### Fixed
+
+- NULL literals were serialized without a value and could not be read back.
+- A variable port that reads its own previous value is reported as stateful, not as an
+  unknown port.
+
 ## [0.1.0] - 2026-09-28
 
 First release: PowerCenter XML → Canonical IR → Spark and DuckDB, end to end, for a

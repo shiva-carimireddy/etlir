@@ -8,7 +8,7 @@ Subclass `etlir.contracts.SourceAdapter`:
 class MyAdapter(SourceAdapter):
     id = "my-format"          # lowercase kebab-case, globally unique
     version = "0.1.0"         # adapter version; bump when normalization rules change
-    ir_version = "0.1.0"      # Canonical IR version produced (major.minor must match)
+    ir_version = "0.2.0"      # Canonical IR version produced (major.minor must match)
 
     def accepts(self, path): ...                 # cheap sniffing
     def load(self, inputs, root) -> RawBundle: ...
@@ -37,7 +37,7 @@ Subclass `etlir.contracts.TargetEmitter`:
 class MyEmitter(TargetEmitter):
     id = "my-target"
     version = "0.1.0"
-    ir_versions = ">=0.1.0,<0.2"
+    ir_versions = ">=0.2.0,<0.3"
 
     def capabilities(self) -> CapabilityManifest: ...
     def plan(self, document) -> dict: ...        # pure; must not mutate the document

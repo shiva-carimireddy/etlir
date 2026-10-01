@@ -50,12 +50,14 @@ from etlir.canonical.model import (
     OperationSpec,
     OutputGroup,
     Parameter,
+    ParameterRefNode,
     ParameterScope,
     Pipeline,
     ProjectOp,
     ReadOp,
     RouteGroup,
     RouteOp,
+    SequenceOp,
     SourceRef,
     Task,
     TaskKind,
@@ -293,6 +295,34 @@ class FlowCtx:
     op_id: Callable[[tuple[str, str]], str]
     definitions: dict[tuple[str, str], RNode | None]
     outgoing: dict[tuple[str, str], list[Connector]]
+    # Row operations of the Update Strategy transformations upstream of each target.
+    strategies: dict[tuple[str, str], set[str]] = field(default_factory=dict)
+    # Sequence Generator -> (pass-through columns, generated column, upstream numbered
+    # before it) after splicing.
+    sequences: dict[tuple[str, str], tuple[list[Column], str, tuple[str, str] | None]] = field(
+        default_factory=dict
+    )
+
+
+_SEQUENCE_TYPES = ("Sequence", "Sequence Generator")
+
+
+_ROW_OPERATIONS = {
+    "DD_INSERT": "insert",
+    "0": "insert",
+    "DD_UPDATE": "update",
+    "1": "update",
+    "DD_DELETE": "delete",
+    "2": "delete",
+    "DD_REJECT": "reject",
+    "3": "reject",
+}
+
+
+def row_operation(definition: RNode) -> str:
+    """The constant row operation of an Update Strategy, or 'expression'."""
+    text = definition.attributes("TABLEATTRIBUTE").get("Update Strategy Expression", "")
+    return _ROW_OPERATIONS.get(text.strip().upper(), "expression")
 
 
 _LOOKUP_POLICY = {
@@ -368,11 +398,22 @@ class Normalizer:
             self.folder_datasets(folder)
         for folder in self.table.sorted_folders():
             self.folder_flows(folder)
+        used = {
+            n.parameter_id
+            for df in self.dataflows.values()
+            for e in df.expressions
+            for n in walk_expression(e.ast)
+            if isinstance(n, ParameterRefNode)
+        }
         return CanonicalDocument(
             pipelines=self.pipelines,
             dataflows=[self.dataflows[k] for k in sorted(self.dataflows)],
             datasets=[self.datasets[k] for k in sorted(self.datasets)],
-            parameters=[self.parameters[k] for k in sorted(self.parameters)],
+            parameters=[
+                self.parameters[k]
+                for k in sorted(self.parameters)
+                if not self.parameters[k].builtin or k in used
+            ],
             bindings=[self.bindings[k] for k in sorted(self.bindings)],
         )
 
@@ -472,17 +513,62 @@ class Normalizer:
 
     # ------------------------------------------------------------------ parameters
 
-    def mapping_env(self, folder: Folder, mapping: RNode) -> Env:
-        """Mapping parameters, and mapping variables this mapping never modifies, are
-        constant for a run and become canonical parameters. Variables changed with
-        SETVARIABLE (or its kin) inside this mapping carry state and stay opaque."""
+    def mapping_env(self, folder: Folder, mapping: RNode, session: RNode | None = None) -> Env:
+        """Mapping parameters and variables become canonical run parameters: PowerCenter
+        evaluates variable references with the start value for the whole session. Variables
+        changed with SETVARIABLE (or its kin) are recorded so reads carry an approximation
+        note (ETLIR does not persist the final value).
+
+        Built-ins: SESSSTARTTIME and SYSDATE read the run-start-time parameter; the mapping,
+        folder, repository and session names are literals."""
         env = Env()
         modified = self.modified_variables(mapping)
+        start = make_id("prm", "builtin", "run_start_time")
+        self.parameters.setdefault(
+            start,
+            Parameter(
+                id=start,
+                name="run_start_time",
+                scope=ParameterScope.PIPELINE,
+                type=DataType(kind=TypeKind.TIMESTAMP),
+                builtin="run_start_time",
+                source=self.ref(mapping, "pc.parameter.run-start-time"),
+            ),
+        )
+        ts = DataType(kind=TypeKind.TIMESTAMP)
+        string = DataType(kind=TypeKind.STRING)
+        env.builtins = {
+            "SESSSTARTTIME": (ParameterRefNode(parameter_id=start), ts),
+            "SYSDATE": (ParameterRefNode(parameter_id=start), ts),
+            "$PMMAPPINGNAME": (LiteralNode(value=mapping.name, type=string), string),
+            "$PMFOLDERNAME": (LiteralNode(value=folder.name, type=string), string),
+            "$PMREPOSITORYNAME": (LiteralNode(value=folder.repository, type=string), string),
+        }
+
+        def pm_parameter(name: str) -> tuple[ExpressionNode, DataType]:
+            pid = make_id("prm", "environment", name.lstrip("$"))
+            self.parameters.setdefault(
+                pid,
+                Parameter(
+                    id=pid,
+                    name=name,
+                    scope=ParameterScope.ENVIRONMENT,
+                    type=string,
+                    source=self.ref(mapping, "pc.parameter.pm-variable"),
+                ),
+            )
+            return ParameterRefNode(parameter_id=pid), string
+
+        env.pm_parameter = pm_parameter
+        if session is not None:
+            env.builtins["$PMSESSIONNAME"] = (
+                LiteralNode(value=session.name, type=string),
+                string,
+            )
         for v in mapping.children("MAPPINGVARIABLE"):
             key = v.name.lstrip("$").upper()
             if v.get("ISPARAM") != "YES" and key in modified:
                 env.stateful.add(key)
-                continue
             pid = make_id("prm", folder.repository, folder.name, mapping.name, v.name.lstrip("$"))
             sensitive = bool(_SENSITIVE.search(v.name))
             ptype = port_type(v.get("DATATYPE"), v.get("PRECISION"), v.get("SCALE"))
@@ -530,7 +616,7 @@ class Normalizer:
         df_src = self.ref(
             session or mapping, "pc.dataflow.session" if session else "pc.dataflow.mapping"
         )
-        base_env = self.mapping_env(folder, mapping)
+        base_env = self.mapping_env(folder, mapping, session)
         local = {t.name: t for t in mapping.children("TRANSFORMATION")}
         # Instance names are unique per transformation type only (a source and its source
         # qualifier may share a name); connectors disambiguate with *INSTANCETYPE.
@@ -546,15 +632,16 @@ class Normalizer:
             )
             for c in mapping.children("CONNECTOR")
         ]
+        definitions: dict[tuple[str, str], RNode | None] = {}
+        for key, inst in instances.items():
+            definitions[key] = self.resolve_instance(folder, inst, local)
+        connectors, sequences = self.splice_sequences(folder, connectors, definitions, instances)
+
         incoming: dict[tuple[str, str], list[Connector]] = {}
         outgoing: dict[tuple[str, str], list[Connector]] = {}
         for c in connectors:
             incoming.setdefault(c.to_inst, []).append(c)
             outgoing.setdefault(c.from_inst, []).append(c)
-
-        definitions: dict[tuple[str, str], RNode | None] = {}
-        for key, inst in instances.items():
-            definitions[key] = self.resolve_instance(folder, inst, local)
         name_count: dict[str, int] = {}
         for inst_name, _ in instances:
             name_count[inst_name] = name_count.get(inst_name, 0) + 1
@@ -584,7 +671,22 @@ class Normalizer:
         edges: list[DataEdge] = []
         native_kind: dict[str, str] = {}
         uses_decimal = False
-        ctx = FlowCtx(op_id=op_id, definitions=definitions, outgoing=outgoing)
+        ctx = FlowCtx(op_id=op_id, definitions=definitions, outgoing=outgoing, sequences=sequences)
+        for key in definitions:
+            if key[1] != "Target Definition":
+                continue
+            seen: set[tuple[str, str]] = set()
+            todo = [key]
+            while todo:
+                k = todo.pop()
+                for c in incoming.get(k, []):
+                    if c.from_inst in seen:
+                        continue
+                    seen.add(c.from_inst)
+                    todo.append(c.from_inst)
+                    d = definitions.get(c.from_inst)
+                    if c.from_inst[1] == "Update Strategy" and d is not None:
+                        ctx.strategies.setdefault(key, set()).add(row_operation(d))
         for inst_key, inst in instances.items():
             oid = op_id(inst_key)
             definition = definitions[inst_key]
@@ -616,6 +718,7 @@ class Normalizer:
                     expressions,
                     base_env,
                     ctx,
+                    inst_key,
                 )
             except Unsupported as exc:
                 outputs = self.unsupported_outputs(definition, outgoing.get(inst_key, []), upstream)
@@ -783,18 +886,37 @@ class Normalizer:
         expressions: list[Expression],
         base_env: Env,
         ctx: FlowCtx,
+        inst_key: tuple[str, str] | None = None,
     ) -> Built:
         # Several upstreams into one non-join transformation are row-aligned merges; they
         # are fused after the dataflow is built (or rejected there if not aligned).
         if ttype == "Source Definition":
             return self.build_read(folder, definition)
+        if not ins and ttype not in ("Source Definition", "Source Qualifier", *_SEQUENCE_TYPES):
+            # Nothing flows in: the number of rows is undefined (or nothing is written).
+            raise Unsupported("no connected inputs")
         if ttype == "Target Definition":
-            return self.build_write(folder, inst, definition, session, oid)
+            strategies = ctx.strategies.get((inst.name, ttype), set())
+            return self.build_write(folder, inst, definition, session, oid, strategies)
         if definition.tag == "MAPPLET":
             raise Unsupported("mapplet expansion is not supported")
 
         ports = _ports(definition)
         connected = {c.to_field for c in ins}
+        if ttype in ("Source Qualifier", "Filter", "Router", "Joiner", "Sorter"):
+            # A port that receives nothing and passes nothing on carries no data; drop it.
+            # (Conditions that still read it fail closed as unknown ports.)
+            used = {c.from_field for c in ctx.outgoing.get((inst.name, ttype), [])}
+            # Router group outputs name their input port in REF_FIELD.
+            used |= {p.node.get("REF_FIELD") for p in ports if p.name in used}
+            dropped = {
+                p.name
+                for p in ports
+                if p.is_input and p.name not in connected and p.name not in used
+            }
+            ports = [
+                p for p in ports if p.name not in dropped and p.node.get("REF_FIELD") not in dropped
+            ]
 
         def add_expr(
             suffix: str, text: str, t: Translation, anchor: RNode, dialect: str = DIALECT
@@ -815,7 +937,12 @@ class Normalizer:
             return ex_id
 
         def env_for(inputs: list[Port], **kw: object) -> Env:
-            env = Env(parameters=dict(base_env.parameters), stateful=set(base_env.stateful))
+            env = Env(
+                parameters=dict(base_env.parameters),
+                stateful=set(base_env.stateful),
+                builtins=dict(base_env.builtins),
+                pm_parameter=base_env.pm_parameter,
+            )
             for k, v in kw.items():
                 setattr(env, k, v)
             for p in inputs:
@@ -850,6 +977,33 @@ class Normalizer:
 
             calls = LookupCalls(make_parts, ctx.definitions, oid)
             return self.build_expression(ports, connected, env_for, add_expr, definition, calls)
+        if ttype in _SEQUENCE_TYPES:
+            key = inst_key or (inst.name, ttype)
+            return self.build_sequence(folder, definition, key, ctx, oid)
+        if ttype == "Sorter":
+            # Relations are unordered, so sorting changes nothing; "Distinct" removes
+            # duplicate rows (an aggregate keyed on every column).
+            self.require_connected(ports, connected)
+            cols = [Column(name=p.name, type=p.type) for p in ports if p.is_output]
+            distinct = definition.attributes("TABLEATTRIBUTE").get("Distinct", "NO") == "YES"
+            spec: OperationSpec = (
+                AggregateOp(group_by=[c.name for c in cols], aggregations=[])
+                if distinct
+                else ProjectOp(columns=[c.name for c in cols])
+            )
+            return Built(spec, [OutputGroup(columns=cols)], "pc.op.sorter")
+        if ttype == "Update Strategy":
+            # Rows pass unchanged; a constant row operation is applied by the session at
+            # the target (see build_write). Row-level expressions are not supported.
+            if row_operation(definition) == "expression":
+                raise Unsupported("row-level update strategy expression")
+            self.require_connected(ports, connected)
+            cols = [Column(name=p.name, type=p.type) for p in ports if p.is_output]
+            return Built(
+                ProjectOp(columns=[c.name for c in cols]),
+                [OutputGroup(columns=cols)],
+                "pc.op.update-strategy",
+            )
         if ttype == "Filter":
             self.require_connected(ports, connected)
             cond = definition.attributes("TABLEATTRIBUTE").get("Filter Condition", "") or "TRUE"
@@ -869,7 +1023,7 @@ class Normalizer:
         if ttype == "Joiner":
             return self.build_joiner(definition, ports, connected, env_for, add_expr)
         if ttype == "Aggregator":
-            return self.build_aggregator(ports, connected, env_for, add_expr, definition)
+            return self.build_aggregator(ports, connected, env_for, add_expr, definition, oid)
         raise Unsupported(f"transformation type '{ttype}' is not supported")
 
     @staticmethod
@@ -892,7 +1046,13 @@ class Normalizer:
         return Built(ReadOp(dataset_id=ds_id), [], "pc.op.read", EvidenceStatus.PRESERVED)
 
     def build_write(
-        self, folder: Folder, inst: RNode, definition: RNode, session: RNode | None, oid: str
+        self,
+        folder: Folder,
+        inst: RNode,
+        definition: RNode,
+        session: RNode | None,
+        oid: str,
+        strategies: set[str] | None = None,
     ) -> Built:
         ds_id = self.dataset_id(folder, "tgt", definition.name)
         if ds_id not in self.datasets:
@@ -911,9 +1071,20 @@ class Normalizer:
                 "pc.op.write",
                 EvidenceStatus.MISSING_INFORMATION,
             )
-        treat = session.attributes().get("Treat source rows as", "Insert")
-        if treat.lower() != "insert":
+        treat = session.attributes().get("Treat source rows as", "Insert").lower()
+        if treat not in ("insert", "data driven"):
             raise Unsupported(f"session treats source rows as '{treat}' (update strategy)")
+        # An insert session inserts every row whatever the Update Strategy says; a
+        # data-driven one applies the (constant) row operation set upstream.
+        operations = (strategies or {"insert"}) if treat == "data driven" else {"insert"}
+        if len(operations) > 1 or operations & {"delete", "reject", "expression"}:
+            raise Unsupported(f"row operations {sorted(operations)} at one target")
+        writer: dict[str, str] = {}
+        for ext in session.children("SESSIONEXTENSION"):
+            if ext.get("SINSTANCENAME") == inst.name and ext.get("TYPE") == "WRITER":
+                writer = {**ext.attributes(), "__file": str("File Writer" in ext.get("SUBTYPE"))}
+        if operations == {"update"}:
+            return self.keyed_write(ds_id, definition, writer)
         mode = WriteMode.APPEND
         for ext in session.children("SESSIONEXTENSION"):
             if ext.get("SINSTANCENAME") != inst.name or ext.get("TYPE") != "WRITER":
@@ -929,6 +1100,144 @@ class Normalizer:
                 mode = WriteMode.OVERWRITE
         return Built(
             WriteOp(dataset_id=ds_id, mode=mode), [], "pc.op.write", EvidenceStatus.PRESERVED
+        )
+
+    def splice_sequences(
+        self,
+        folder: Folder,
+        connectors: list[Connector],
+        definitions: dict[tuple[str, str], RNode | None],
+        instances: dict[tuple[str, str], RNode],
+    ) -> tuple[
+        list[Connector], dict[tuple[str, str], tuple[list[Column], str, tuple[str, str] | None]]
+    ]:
+        """A Sequence Generator has no input: its NEXTVAL numbers the rows of the
+        transformation it feeds. Route that consumer's other input through the generator,
+        so the generator becomes a pass-through op that adds the number (a canonical
+        sequence op) and the consumer has a single upstream. With two consumers (PowerCenter
+        hands each a block of values) the second gets its own op numbering after the
+        first's rows. Other shapes (CURRVAL, more consumers, several other upstreams) are
+        left alone and fail closed."""
+        spliced: dict[tuple[str, str], tuple[list[Column], str, tuple[str, str] | None]] = {}
+        for key, d in list(definitions.items()):
+            if key[1] not in _SEQUENCE_TYPES or d is None:
+                continue
+            outs = [c for c in connectors if c.from_inst == key]
+            consumers = sorted({c.to_inst for c in outs})
+            if (
+                not outs
+                or any(c.from_field != "NEXTVAL" for c in outs)
+                or len(outs) != len(consumers)
+                or len(consumers) > 2
+            ):
+                continue
+            plans = []
+            for consumer in consumers:
+                feeding = [c for c in connectors if c.to_inst == consumer and c.from_inst != key]
+                cdef = definitions.get(consumer)
+                if len({c.from_inst for c in feeding}) != 1 or cdef is None:
+                    break
+                types = self.port_types(folder, consumer, cdef)
+                if any(c.to_field not in types for c in feeding):
+                    break
+                (out,) = [c for c in outs if c.to_inst == consumer]
+                plans.append((consumer, feeding, out, types))
+            else:
+                previous: tuple[str, str] | None = None
+                for i, (consumer, feeding, out, types) in enumerate(plans):
+                    gen = key if i == 0 else (f"{key[0]}#{i + 1}", key[1])
+                    if gen not in instances:
+                        instances[gen] = instances[key]
+                        definitions[gen] = d
+                    cols = [Column(name=c.to_field, type=types[c.to_field]) for c in feeding]
+                    spliced[gen] = (cols, out.to_field, previous)
+                    previous = feeding[0].from_inst
+                    rest = [c for c in connectors if c not in feeding and c is not out]
+                    connectors = [
+                        *rest,
+                        *(Connector(c.from_inst, c.from_field, gen, c.to_field) for c in feeding),
+                        *(Connector(gen, c.to_field, consumer, c.to_field) for c in feeding),
+                        Connector(gen, out.to_field, consumer, out.to_field),
+                    ]
+        return connectors, spliced
+
+    def port_types(
+        self, folder: Folder, key: tuple[str, str], definition: RNode
+    ) -> dict[str, DataType]:
+        if key[1] == "Target Definition":
+            ds_id = self.dataset_id(folder, "tgt", definition.name)
+            ds = self.datasets.get(ds_id)
+            return {c.name: c.type for c in ds.columns} if ds else {}
+        return {p.name: p.type for p in _ports(definition) if p.is_input}
+
+    def build_sequence(
+        self, folder: Folder, definition: RNode, key: tuple[str, str], ctx: FlowCtx, oid: str
+    ) -> Built:
+        if key not in ctx.sequences:
+            raise Unsupported(
+                "sequence generator shape not supported (NEXTVAL must feed one transformation "
+                "that has one other upstream; CURRVAL is not supported)"
+            )
+        attrs = definition.attributes("TABLEATTRIBUTE")
+        if attrs.get("Cycle", "NO").upper() == "YES":
+            raise Unsupported("cycling sequence generator")
+        if attrs.get("End Value", "9223372036854775807") != "9223372036854775807":
+            raise Unsupported("sequence generator with an end value")
+        increment = int(attrs.get("Increment By", "1") or "1")
+        reset = attrs.get("Reset", "NO").upper() == "YES"
+        start = attrs.get("Start Value" if reset else "Current Value", "") or attrs.get(
+            "Start Value", "1"
+        )
+        pid = make_id("prm", folder.repository, folder.name, "sequence", definition.name)
+        self.parameters.setdefault(
+            pid,
+            Parameter(
+                id=pid,
+                name=f"{definition.name}.start",
+                scope=ParameterScope.DATAFLOW,
+                type=DataType(kind=TypeKind.BIGINT),
+                default=start,
+                source=self.ref(definition, "pc.parameter.sequence-start"),
+            ),
+        )
+        cols, column, after = ctx.sequences[key]
+        out = [*cols, Column(name=column, type=DataType(kind=TypeKind.BIGINT))]
+        built = Built(
+            SequenceOp(column=column, start_parameter_id=pid, increment=increment),
+            [OutputGroup(columns=out)],
+            "pc.op.sequence",
+            EvidenceStatus.APPROXIMATED,
+            [
+                "values are assigned in a deterministic order (all columns ascending), not "
+                "PowerCenter's arrival order; the current value is not persisted between runs "
+                "(supply the start value as a run parameter)"
+            ],
+        )
+        if after is not None:  # second consumer: its block follows the first consumer's rows
+            built.extra_edges.append(
+                DataEdge(from_operation=ctx.op_id(after), to_operation=oid, to_input="after")
+            )
+        return built
+
+    @staticmethod
+    def keyed_write(ds_id: str, definition: RNode, writer: dict[str, str]) -> Built:
+        """DD_UPDATE rows: 'Update as Update' updates by primary key, 'Update else Insert'
+        upserts, 'Update as Insert' inserts."""
+        if writer.get("__file") == "True":
+            raise Unsupported("update strategy on a flat-file target")
+        if writer.get("Update as Insert") == "YES":
+            return Built(WriteOp(dataset_id=ds_id), [], "pc.op.write", EvidenceStatus.PRESERVED)
+        if writer.get("Truncate target table option") == "YES":
+            raise Unsupported("update strategy on a target truncated before the load")
+        keys = [f.name for f in definition.children("TARGETFIELD") if "PRIMARY" in f.get("KEYTYPE")]
+        if not keys:
+            raise Unsupported("update strategy on a target without a primary key")
+        mode = WriteMode.UPSERT if writer.get("Update else Insert") == "YES" else WriteMode.UPDATE
+        return Built(
+            WriteOp(dataset_id=ds_id, mode=mode, keys=keys),
+            [],
+            "pc.op.write-keyed",
+            EvidenceStatus.PRESERVED,
         )
 
     @staticmethod
@@ -1503,8 +1812,10 @@ class Normalizer:
         variables = [p for p in ports if p.is_variable]
         env.pending = {v.name for v in variables}
         for v in variables:
-            env.pending.discard(v.name)
+            # Still pending while its own expression is translated: a self-reference reads
+            # the previous row's value (stateful).
             t = translate(v.expression, env)
+            env.pending.discard(v.name)
             if t.opaque:
                 reason = t.node.reason if isinstance(t.node, OpaqueNode) else ""
                 env.inline[v.name] = (
@@ -1528,7 +1839,12 @@ class Normalizer:
                         )
                     )
                 continue
-            t = translate(p.expression, env)
+            if not p.expression.strip():
+                t = Translation(
+                    LiteralNode(value=None, type=p.type), p.type, {"pc.expr.empty-output"}
+                )
+            else:
+                t = translate(p.expression, env)
             if not t.opaque:
                 t = Translation(convert(t, p.type, p.expression), p.type, t.notes)
             assignments.append(
@@ -1680,10 +1996,8 @@ class Normalizer:
             "pc.op.joiner",
         )
 
-    def build_aggregator(self, ports, connected, env_for, add_expr, definition) -> Built:  # type: ignore[no-untyped-def]
+    def build_aggregator(self, ports, connected, env_for, add_expr, definition, oid) -> Built:  # type: ignore[no-untyped-def]
         keys = [p for p in ports if p.exprtype == "GROUPBY"]
-        if not keys:
-            raise Unsupported("aggregator without group-by ports (empty-input behavior unverified)")
         for p in ports:
             if p.is_variable:
                 raise Unsupported(f"variable port {p.name} in aggregator")
@@ -1706,11 +2020,73 @@ class Normalizer:
             aggs.append(
                 Aggregation(column=p.name, expression_id=add_expr(p.name, p.expression, t, p.node))
             )
-        return Built(
-            AggregateOp(group_by=[k.name for k in keys], aggregations=aggs),
-            [OutputGroup(columns=cols)],
-            "pc.op.aggregator",
+        if keys:
+            return Built(
+                AggregateOp(group_by=[k.name for k in keys], aggregations=aggs),
+                [OutputGroup(columns=cols)],
+                "pc.op.aggregator",
+            )
+        return self.global_aggregator(aggs, cols, add_expr, definition, oid)
+
+    def global_aggregator(self, aggs, cols, add_expr, definition, oid) -> Built:  # type: ignore[no-untyped-def]
+        """An Aggregator without group-by ports emits one row, or none for empty input
+        (a canonical global aggregate always emits one): aggregate with a row count, keep
+        the row only when the count is positive, then drop the count."""
+        rows = "__rows"
+        count_t = DataType(kind=TypeKind.BIGINT)
+        count_id = add_expr(
+            "rows",
+            "COUNT(*)",
+            Translation(CallNode(function="count_all", args=[]), count_t, set()),
+            definition,
         )
+        nonempty = CallNode(
+            function="gt",
+            args=[ColumnRefNode(name=rows), LiteralNode(value=0, type=count_t)],
+        )
+        cond_id = add_expr(
+            "nonempty",
+            "COUNT(*) > 0",
+            Translation(nonempty, DataType(kind=TypeKind.BOOLEAN), set()),
+            definition,
+        )
+        agg_id = make_id("op", "aggregate", parent=oid)
+        filter_id = make_id("op", "nonempty", parent=oid)
+        with_rows = [*cols, Column(name=rows, type=count_t)]
+        src = self.ref(definition, "pc.op.aggregator-global")
+        built = Built(
+            ProjectOp(columns=[c.name for c in cols]),
+            [OutputGroup(columns=cols)],
+            "pc.op.aggregator-global",
+            EvidenceStatus.APPROXIMATED,
+            [
+                "PowerCenter emits no row for empty input (documented community behavior, "
+                "not verified against a live runtime)"
+            ],
+        )
+        built.extra_ops = [
+            Operation(
+                id=agg_id,
+                spec=AggregateOp(
+                    group_by=[],
+                    aggregations=[*aggs, Aggregation(column=rows, expression_id=count_id)],
+                ),
+                outputs=[OutputGroup(columns=with_rows)],
+                source=src,
+            ),
+            Operation(
+                id=filter_id,
+                spec=FilterOp(predicate_expression_id=cond_id),
+                outputs=[OutputGroup(columns=with_rows)],
+                source=src,
+            ),
+        ]
+        built.extra_edges = [
+            DataEdge(from_operation=agg_id, to_operation=filter_id),
+            DataEdge(from_operation=filter_id, to_operation=oid),
+        ]
+        built.input_target = agg_id
+        return built
 
     # ------------------------------------------------------------------ pipeline
 
@@ -1899,6 +2275,17 @@ def convert(t: Translation, target: DataType, text: str) -> ExpressionNode:
         return CastNode(to=target, arg=t.node)
     if src is target.kind:
         return t.node
+    whole = src in (TypeKind.INTEGER, TypeKind.BIGINT) or (
+        src is TypeKind.DECIMAL and t.type.precision is not None and not t.type.scale
+    )
+    if whole and target.kind is TypeKind.STRING:  # exact: the number's decimal digits
+        return CallNode(function="to_string", args=[t.node])
+    if src is TypeKind.DECIMAL and target.kind is TypeKind.STRING:
+        t.notes.add("pc.expr.number-text")
+        return CallNode(function="to_string", args=[t.node])
+    if src is TypeKind.BOOLEAN and target.kind is TypeKind.STRING:  # TRUE/FALSE are 1/0
+        integer = CastNode(to=DataType(kind=TypeKind.INTEGER), arg=t.node)
+        return CallNode(function="to_string", args=[integer])
     return OpaqueNode(
         text=text,
         dialect=DIALECT,

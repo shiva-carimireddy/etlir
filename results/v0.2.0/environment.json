@@ -1,0 +1,10 @@
+{
+  "canonical_ir": "0.2.0",
+  "duckdb": "1.5.6",
+  "etlir": "0.2.0",
+  "platform": "Windows-11",
+  "protocol": "v1",
+  "pyspark": "4.2.0",
+  "python": "3.12.12",
+  "sqlglot": "30.20.0"
+}

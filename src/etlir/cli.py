@@ -111,6 +111,27 @@ def _cmd_convert(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_corpus(args: argparse.Namespace) -> int:
+    from etlir.corpus import evaluate_corpus
+
+    result = evaluate_corpus(
+        Path(args.manifest), Path(args.root), Path(args.out), targets=args.target or None
+    )
+    t = result["totals"]
+    print(
+        f"files verified {t['files_verified']['count']}/{t['files_verified']['of']}, "
+        f"operations mapped {t['operations_mapped']['count']}/{t['operations_mapped']['of']}"
+    )
+    for tid, v in t["targets"].items():
+        d, k = v["dataflows_emitted"], v["tasks_runnable"]
+        print(
+            f"  {tid}: dataflows emitted {d['count']}/{d['of']}, "
+            f"tasks runnable {k['count']}/{k['of']}"
+        )
+    print(f"results: {Path(args.out) / 'corpus.json'}")
+    return 0
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     from etlir.runner import run_package
 
@@ -283,6 +304,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mutation-target", default="duckdb")
     p.add_argument("--no-mutations", action="store_true")
     p.set_defaults(func=_cmd_benchmark)
+
+    p = sub.add_parser("corpus", help="Verify, convert and measure a pinned corpus.")
+    p.add_argument("--manifest", default="benchmarks/corpus.toml")
+    p.add_argument("--root", default="benchmarks/external", help="Fetched corpus directory.")
+    p.add_argument("--out", required=True)
+    p.add_argument("--target", action="append")
+    p.set_defaults(func=_cmd_corpus)
 
     p = sub.add_parser("capabilities", help="Show target capability manifests.")
     p.add_argument("target", nargs="?")
