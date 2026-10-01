@@ -55,7 +55,7 @@ class ToyAdapter(SourceAdapter):
 
     id = "toy-json"
     version = "0.0.1"
-    ir_version = "0.1.0"
+    ir_version = "0.2.0"
 
     def accepts(self, path: Path) -> bool:
         return path.name.endswith(".toy.json")
@@ -219,7 +219,7 @@ class PlanOnlyEmitter(TargetEmitter):
 
     id = "plan-only"
     version = "0.0.1"
-    ir_versions = ">=0.1.0,<0.2"
+    ir_versions = ">=0.2.0,<0.3"
 
     def __init__(self, rules: list[CapabilityRule] | None = None) -> None:
         self._rules = (

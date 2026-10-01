@@ -39,7 +39,7 @@ generated runtime helpers (etlir_*_runtime.py) -> no etlir import at all
 A target emitter receives a `CanonicalDocument` only. Target-specific choices live in the
 target plan, never in the Canonical IR. The schema is checked for product vocabulary.
 
-## Canonical IR (0.1.0)
+## Canonical IR (0.2.0)
 
 Two separate graphs:
 

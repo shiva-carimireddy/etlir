@@ -811,12 +811,12 @@
               "type": "null"
             }
           ],
-          "description": "Literal value. Decimals and timestamps are encoded as strings.",
+          "default": null,
+          "description": "Literal value (absent or null for NULL). Decimals and timestamps are encoded as strings.",
           "title": "Value"
         }
       },
       "required": [
-        "value",
         "type"
       ],
       "title": "LiteralNode",
@@ -931,6 +931,7 @@
               "project": "#/$defs/ProjectOp",
               "read": "#/$defs/ReadOp",
               "route": "#/$defs/RouteOp",
+              "sequence": "#/$defs/SequenceOp",
               "union": "#/$defs/UnionOp",
               "unsupported": "#/$defs/UnsupportedOp",
               "write": "#/$defs/WriteOp"
@@ -967,6 +968,9 @@
             },
             {
               "$ref": "#/$defs/UnionOp"
+            },
+            {
+              "$ref": "#/$defs/SequenceOp"
             },
             {
               "$ref": "#/$defs/UnsupportedOp"
@@ -1009,6 +1013,20 @@
     "Parameter": {
       "additionalProperties": false,
       "properties": {
+        "builtin": {
+          "anyOf": [
+            {
+              "const": "run_start_time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Value supplied by the runtime when the run does not set it: run_start_time is the run's start instant (UTC), identical for every task of a run.",
+          "title": "Builtin"
+        },
         "default": {
           "anyOf": [
             {
@@ -1237,6 +1255,39 @@
       "title": "RouteOp",
       "type": "object"
     },
+    "SequenceOp": {
+      "additionalProperties": false,
+      "description": "Pass the input through and add ``column`` (bigint): the input rows, ordered by all\ntheir columns ascending with NULLs first, receive start, start + increment, … where\nstart is the value of parameter ``start_parameter_id``. Rows that are equal in every\ncolumn are interchangeable, so the result is deterministic. When slot ``after`` is\nconnected, numbering continues after as many values as ``after`` has rows (start +\ncount(after) * increment): two consumers of one generator get consecutive blocks.",
+      "properties": {
+        "column": {
+          "title": "Column",
+          "type": "string"
+        },
+        "increment": {
+          "default": 1,
+          "title": "Increment",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "sequence",
+          "default": "sequence",
+          "title": "Kind",
+          "type": "string"
+        },
+        "start_parameter_id": {
+          "description": "Stable identifier, unique within a CanonicalDocument.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
+          "title": "Start Parameter Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "column",
+        "start_parameter_id"
+      ],
+      "title": "SequenceOp",
+      "type": "object"
+    },
     "SourceRef": {
       "additionalProperties": false,
       "description": "Link from a canonical entity back to its source artifact (source trace).",
@@ -1450,20 +1501,30 @@
       "enum": [
         "append",
         "overwrite",
-        "error_if_exists"
+        "error_if_exists",
+        "update",
+        "upsert"
       ],
       "title": "WriteMode",
       "type": "string"
     },
     "WriteOp": {
       "additionalProperties": false,
-      "description": "Write the input to ``dataset_id``. Dataset columns without an input column are NULL.",
+      "description": "Write the input to ``dataset_id``. Dataset columns without an input column are NULL.\n\nKeyed modes match input rows to existing rows on ``keys`` (plain equality, so NULL keys\nnever match): ``update`` sets the input's columns on matching rows and discards input\nrows without a match; ``upsert`` also inserts them. Columns the input does not provide\nkeep their existing values. Duplicate keys in the input fail the task.",
       "properties": {
         "dataset_id": {
           "description": "Stable identifier, unique within a CanonicalDocument.",
           "pattern": "^[A-Za-z_][A-Za-z0-9_.:\\-]{0,254}$",
           "title": "Dataset Id",
           "type": "string"
+        },
+        "keys": {
+          "description": "Key columns of keyed modes.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Keys",
+          "type": "array"
         },
         "kind": {
           "const": "write",
@@ -1483,7 +1544,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/shiva-carimireddy/etlir/schemas/canonical/canonical-ir-0.1.0.schema.json",
+  "$id": "https://github.com/shiva-carimireddy/etlir/schemas/canonical/canonical-ir-0.2.0.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -1509,8 +1570,8 @@
       "type": "array"
     },
     "ir_version": {
-      "const": "0.1.0",
-      "default": "0.1.0",
+      "const": "0.2.0",
+      "default": "0.2.0",
       "title": "Ir Version",
       "type": "string"
     },

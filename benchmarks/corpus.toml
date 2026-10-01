@@ -14,7 +14,7 @@
 # emit-capable, locally-executable, behaviorally-comparable. Public exports lack source
 # data, so none of these groups is locally executable as-is.
 schema_version = 1
-status = "pinned, protocol not frozen"
+status = "pinned; evaluated under protocol v1"
 
 [[group]]
 id = "hhs-informatica"

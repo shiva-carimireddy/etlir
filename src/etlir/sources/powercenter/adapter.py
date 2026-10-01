@@ -23,7 +23,7 @@ class PowerCenterAdapter(SourceAdapter):
 
     id = ADAPTER_ID
     version = _etlir_version
-    ir_version = "0.1.0"
+    ir_version = "0.2.0"
     description = "Informatica PowerCenter repository XML exports (documented subset)"
 
     def __init__(self, max_bytes: int = xmlio.MAX_BYTES) -> None:

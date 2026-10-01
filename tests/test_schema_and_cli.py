@@ -36,4 +36,4 @@ def test_validate_command(
 
 def test_version_command(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["version"]) == 0
-    assert "canonical IR 0.1.0" in capsys.readouterr().out
+    assert "canonical IR 0.2.0" in capsys.readouterr().out

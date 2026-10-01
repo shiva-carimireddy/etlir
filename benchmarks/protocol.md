@@ -1,8 +1,9 @@
-# Evaluation protocol (DRAFT, not frozen)
+# Evaluation protocol v1 (frozen with ETLIR 0.2.0)
 
-This protocol must be frozen, tagged, and cited **before** results are collected for
-publication. Changes after freezing require a new protocol version, not an edit in place.
-Nothing in the repository today is a publication result.
+This protocol is frozen. A change requires a new protocol version (v2, …) recorded here,
+never an edit of v1 in place. Publication results are produced from a tagged release with
+the commands under *Producing results* and committed to `results/v<version>/`; any other
+number (from development branches or ad-hoc scripts) is not a result.
 
 ## Case partitions
 
@@ -39,8 +40,21 @@ is reported as numerator/denominator.
 | Output agreement | results `output_agreement` | cases agreeing on all declared outputs / compared cases |
 | Mutation detection | results `mutations_detected` | detected / applicable mutation operators |
 
-Still to implement before freezing: stage timings and peak memory, and the analysis
-script that renders paper tables from `results/<release>/`.
+Out of scope for v1: stage timings, peak memory and any other performance measure. No
+performance claim may be made from v1 results.
+
+## Producing results
+
+```bash
+python scripts/fetch_corpus.py        # fetch the pinned corpus, verify every digest
+python scripts/collect_results.py     # benchmark (DuckDB with mutations, Spark) and corpus
+```
+
+`collect_results.py` writes `results/v<version>/`: `benchmark-duckdb/results.json`,
+`benchmark-spark/results.json`, `corpus/corpus.json`, `environment.json` (tool, IR,
+engine and Python versions) and `tables.md`, rendered by `scripts/paper_tables.py` from
+those files only. Per-group conversion outputs stay in the ignored `out/` directory: they
+contain third-party metadata.
 
 ## Comparison policy
 

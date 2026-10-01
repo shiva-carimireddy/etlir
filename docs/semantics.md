@@ -1,4 +1,4 @@
-# Canonical IR semantics (0.1.0)
+# Canonical IR semantics (0.2.0)
 
 This page defines what Canonical IR constructs **mean**. Source adapters map native
 constructs onto these semantics (or mark them unsupported/opaque); target emitters must
@@ -48,7 +48,7 @@ must be a decimal literal; anything else fails the task). The last is used only 
 parameter values substituted into SQL text. No implicit string↔number or string↔time
 conversion exists; an adapter must emit an opaque expression instead.
 
-String length (`DataType.length`) is informational in 0.1: targets do not truncate or
+String length (`DataType.length`) is informational in 0.2: targets do not truncate or
 reject longer values.
 
 ## Expressions and functions
@@ -111,8 +111,8 @@ instant (the reference runner sets it once per run).
 ## Workflow
 
 A pipeline's tasks form a DAG. A dependency has a condition: `success`, `failure`,
-`completion` (either), or `expression` (opaque in 0.1). A task runs when **all** its
-dependency conditions hold (`trigger = all`); `trigger = any` is representable but no 0.1
+`completion` (either), or `expression` (opaque in 0.2). A task runs when **all** its
+dependency conditions hold (`trigger = all`); `trigger = any` is representable but no 0.2
 target supports it. A task whose conditions cannot hold does not run, and neither do its
 dependents that require it to succeed. A `notify` task stands for a notification (for
 example an e-mail); the Canonical IR does not carry recipients or message text.

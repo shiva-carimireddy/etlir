@@ -137,7 +137,7 @@ def manifest(version: str) -> CapabilityManifest:
     return CapabilityManifest(
         target=TARGET_ID,
         target_version=version,
-        ir_versions=">=0.1,<0.2",
+        ir_versions=">=0.2,<0.3",
         rules=[
             CapabilityRule(
                 construct_id=c,
@@ -679,7 +679,7 @@ class DuckDBEmitter(TargetEmitter):
 
     id = TARGET_ID
     version = _etlir_version
-    ir_versions = ">=0.1,<0.2"
+    ir_versions = ">=0.2,<0.3"
     description = "DuckDB SQL (local reference profile, no JVM)"
 
     def capabilities(self) -> CapabilityManifest:

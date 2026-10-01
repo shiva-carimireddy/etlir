@@ -137,7 +137,7 @@ def manifest(version: str) -> CapabilityManifest:
         for c in _SUPPORTED
     ]
     return CapabilityManifest(
-        target=TARGET_ID, target_version=version, ir_versions=">=0.1,<0.2", rules=rules
+        target=TARGET_ID, target_version=version, ir_versions=">=0.2,<0.3", rules=rules
     )
 
 
@@ -633,7 +633,7 @@ class SparkEmitter(TargetEmitter):
 
     id = TARGET_ID
     version = _etlir_version
-    ir_versions = ">=0.1,<0.2"
+    ir_versions = ">=0.2,<0.3"
     description = "Apache Spark (PySpark DataFrame API); local spark-submit reference runner"
 
     def capabilities(self) -> CapabilityManifest:

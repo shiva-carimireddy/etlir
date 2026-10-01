@@ -20,7 +20,7 @@ from typing import Annotated, Final, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
-IR_VERSION: Final = "0.1.0"
+IR_VERSION: Final = "0.2.0"
 
 Identifier = Annotated[
     str,
@@ -485,7 +485,7 @@ class LineageEdge(_Model):
 
 
 class CanonicalDocument(_Model):
-    ir_version: Literal["0.1.0"] = IR_VERSION
+    ir_version: Literal["0.2.0"] = IR_VERSION
     pipelines: list[Pipeline] = Field(default_factory=list)
     dataflows: list[Dataflow] = Field(default_factory=list)
     datasets: list[Dataset] = Field(default_factory=list)

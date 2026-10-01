@@ -5,7 +5,12 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/). The Canonical IR has its own version; see
 [ADR-0004](docs/decisions/0004-versioning-and-compatibility.md).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-30
+
+Coverage release: the expression language, update strategies, sequence generators,
+sorters and global aggregators; a frozen evaluation protocol (v1) with committed results.
+Canonical IR 0.2.0 (new functions, `sequence` operation, keyed write modes,
+`Parameter.builtin`, IR-V-018/019; 0.1.0 documents are not read by 0.2.0).
 
 ### Added
 
@@ -36,6 +41,8 @@ All notable changes are documented here. The format follows
   variables as run parameters, booleans into string ports, unused unconnected ports.
 - Invariants IR-V-018 (missing input) and IR-V-019 (keyed write keys); a dataflow violating
   a structural invariant is blocked instead of emitted.
+- Evaluation protocol v1 frozen; `scripts/collect_results.py` produces
+  `results/v<version>/` and `scripts/paper_tables.py` renders its tables. `python -m etlir`.
 - `etlir corpus`: verifies the pinned corpus digests, converts every group, and writes a
   deterministic `corpus.json` (per-group rows, totals, ranked blocker reasons).
 - Benchmark manifests can seed existing target content (`[seed]`). New cases
