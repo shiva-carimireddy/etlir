@@ -266,7 +266,15 @@ def _literal(node: CallNode, i: int) -> Any:
     return arg.value
 
 
-_SPARK_FORMAT = {"YYYY": "yyyy", "MM": "MM", "DD": "dd", "HH24": "HH", "MI": "mm", "SS": "ss"}
+_SPARK_FORMAT = {
+    "YYYY": "yyyy",
+    "YY": "yy",
+    "MM": "MM",
+    "DD": "dd",
+    "HH24": "HH",
+    "MI": "mm",
+    "SS": "ss",
+}
 _UNIT_PART = {
     "year": "F.year",
     "month": "F.month",
@@ -320,10 +328,14 @@ def _extended(node: CallNode, args: list[str], arg_types: list[DataType]) -> str
     if fn == "leading_decimal":
         return f"rt.leading_decimal({args[0]}, {int(_literal(node, 1))})"
     if fn == "to_string":
+        if arg_types[0].kind is TypeKind.DECIMAL:
+            return f"rt.decimal_text({args[0]})"
         return f"({args[0]}).cast('string')"
     if fn == "format_timestamp":
         return f"F.date_format({args[0]}, {_format(_literal(node, 1))[0]!r})"
     if fn in ("parse_timestamp", "can_parse_timestamp"):
+        if "YY" in (parse_format(str(_literal(node, 1))) or []):
+            raise Unlowerable("a two-digit year cannot be parsed (no century)")
         pattern, regex = _format(_literal(node, 1))
         return f"rt.{fn}({args[0]}, {pattern!r}, {regex!r})"
     if fn in ("trunc", "round"):
@@ -543,6 +555,8 @@ class _Job:
                 f"rt.col({c.name!r}).asc_nulls_first()" for c in s.inputs["in"].columns
             )
             start = f"rt.param(ctx, {spec.start_parameter_id!r}, 'bigint')"
+            if "after" in s.inputs:
+                start += f" + F.lit({self.slot(s.inputs['after'])}.count() * {spec.increment})"
             self.emit(
                 f"    {self.var(s.output_relation())} = {src}.withColumn({spec.column!r}, "
                 f"({start} + (F.row_number().over(rt.Window.orderBy({ordering})) - 1) "

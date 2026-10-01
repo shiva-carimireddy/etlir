@@ -167,6 +167,12 @@ def can_parse_timestamp(s: Column, pattern: str, regex: str) -> Column:
     )
 
 
+def decimal_text(x: Column) -> Column:
+    """Plain notation without trailing fractional zeros: 12.50 -> '12.5', 3.00 -> '3'."""
+    text = x.cast("string")
+    return F.when(text.contains("."), F.regexp_replace(text, r"\.?0+$", "")).otherwise(text)
+
+
 def trunc_decimal(x: Column, places: int) -> Column:
     """Truncate toward zero to the given number of decimal places."""
     return F.when(x >= 0, F.floor(x, F.lit(places))).otherwise(F.ceil(x, F.lit(places)))

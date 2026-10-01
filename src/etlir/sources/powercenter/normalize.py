@@ -297,8 +297,11 @@ class FlowCtx:
     outgoing: dict[tuple[str, str], list[Connector]]
     # Row operations of the Update Strategy transformations upstream of each target.
     strategies: dict[tuple[str, str], set[str]] = field(default_factory=dict)
-    # Sequence Generator -> (pass-through columns, generated column) after splicing.
-    sequences: dict[tuple[str, str], tuple[list[Column], str]] = field(default_factory=dict)
+    # Sequence Generator -> (pass-through columns, generated column, upstream numbered
+    # before it) after splicing.
+    sequences: dict[tuple[str, str], tuple[list[Column], str, tuple[str, str] | None]] = field(
+        default_factory=dict
+    )
 
 
 _SEQUENCE_TYPES = ("Sequence", "Sequence Generator")
@@ -632,7 +635,7 @@ class Normalizer:
         definitions: dict[tuple[str, str], RNode | None] = {}
         for key, inst in instances.items():
             definitions[key] = self.resolve_instance(folder, inst, local)
-        connectors, sequences = self.splice_sequences(folder, connectors, definitions)
+        connectors, sequences = self.splice_sequences(folder, connectors, definitions, instances)
 
         incoming: dict[tuple[str, str], list[Connector]] = {}
         outgoing: dict[tuple[str, str], list[Connector]] = {}
@@ -715,6 +718,7 @@ class Normalizer:
                     expressions,
                     base_env,
                     ctx,
+                    inst_key,
                 )
             except Unsupported as exc:
                 outputs = self.unsupported_outputs(definition, outgoing.get(inst_key, []), upstream)
@@ -882,6 +886,7 @@ class Normalizer:
         expressions: list[Expression],
         base_env: Env,
         ctx: FlowCtx,
+        inst_key: tuple[str, str] | None = None,
     ) -> Built:
         # Several upstreams into one non-join transformation are row-aligned merges; they
         # are fused after the dataflow is built (or rejected there if not aligned).
@@ -973,7 +978,20 @@ class Normalizer:
             calls = LookupCalls(make_parts, ctx.definitions, oid)
             return self.build_expression(ports, connected, env_for, add_expr, definition, calls)
         if ttype in _SEQUENCE_TYPES:
-            return self.build_sequence(folder, definition, (inst.name, ttype), ctx)
+            key = inst_key or (inst.name, ttype)
+            return self.build_sequence(folder, definition, key, ctx, oid)
+        if ttype == "Sorter":
+            # Relations are unordered, so sorting changes nothing; "Distinct" removes
+            # duplicate rows (an aggregate keyed on every column).
+            self.require_connected(ports, connected)
+            cols = [Column(name=p.name, type=p.type) for p in ports if p.is_output]
+            distinct = definition.attributes("TABLEATTRIBUTE").get("Distinct", "NO") == "YES"
+            spec: OperationSpec = (
+                AggregateOp(group_by=[c.name for c in cols], aggregations=[])
+                if distinct
+                else ProjectOp(columns=[c.name for c in cols])
+            )
+            return Built(spec, [OutputGroup(columns=cols)], "pc.op.sorter")
         if ttype == "Update Strategy":
             # Rows pass unchanged; a constant row operation is applied by the session at
             # the target (see build_write). Row-level expressions are not supported.
@@ -1089,40 +1107,58 @@ class Normalizer:
         folder: Folder,
         connectors: list[Connector],
         definitions: dict[tuple[str, str], RNode | None],
-    ) -> tuple[list[Connector], dict[tuple[str, str], tuple[list[Column], str]]]:
+        instances: dict[tuple[str, str], RNode],
+    ) -> tuple[
+        list[Connector], dict[tuple[str, str], tuple[list[Column], str, tuple[str, str] | None]]
+    ]:
         """A Sequence Generator has no input: its NEXTVAL numbers the rows of the
         transformation it feeds. Route that consumer's other input through the generator,
         so the generator becomes a pass-through op that adds the number (a canonical
-        sequence op) and the consumer has a single upstream. Shapes outside this (several
-        consumers, CURRVAL, several other upstreams) are left alone and fail closed."""
-        spliced: dict[tuple[str, str], tuple[list[Column], str]] = {}
-        for key, d in definitions.items():
+        sequence op) and the consumer has a single upstream. With two consumers (PowerCenter
+        hands each a block of values) the second gets its own op numbering after the
+        first's rows. Other shapes (CURRVAL, more consumers, several other upstreams) are
+        left alone and fail closed."""
+        spliced: dict[tuple[str, str], tuple[list[Column], str, tuple[str, str] | None]] = {}
+        for key, d in list(definitions.items()):
             if key[1] not in _SEQUENCE_TYPES or d is None:
                 continue
             outs = [c for c in connectors if c.from_inst == key]
-            consumers = {c.to_inst for c in outs}
-            if len(outs) != 1 or outs[0].from_field != "NEXTVAL" or len(consumers) != 1:
+            consumers = sorted({c.to_inst for c in outs})
+            if (
+                not outs
+                or any(c.from_field != "NEXTVAL" for c in outs)
+                or len(outs) != len(consumers)
+                or len(consumers) > 2
+            ):
                 continue
-            (consumer,) = consumers
-            feeding = [c for c in connectors if c.to_inst == consumer and c.from_inst != key]
-            if len({c.from_inst for c in feeding}) != 1:
-                continue
-            cdef = definitions.get(consumer)
-            if cdef is None:
-                continue
-            types = self.port_types(folder, consumer, cdef)
-            if any(c.to_field not in types for c in feeding):
-                continue
-            seq_col = outs[0].to_field
-            cols = [Column(name=c.to_field, type=types[c.to_field]) for c in feeding]
-            spliced[key] = (cols, seq_col)
-            rest = [c for c in connectors if c not in feeding and c is not outs[0]]
-            connectors = [
-                *rest,
-                *(Connector(c.from_inst, c.from_field, key, c.to_field) for c in feeding),
-                *(Connector(key, c.to_field, consumer, c.to_field) for c in feeding),
-                Connector(key, seq_col, consumer, seq_col),
-            ]
+            plans = []
+            for consumer in consumers:
+                feeding = [c for c in connectors if c.to_inst == consumer and c.from_inst != key]
+                cdef = definitions.get(consumer)
+                if len({c.from_inst for c in feeding}) != 1 or cdef is None:
+                    break
+                types = self.port_types(folder, consumer, cdef)
+                if any(c.to_field not in types for c in feeding):
+                    break
+                (out,) = [c for c in outs if c.to_inst == consumer]
+                plans.append((consumer, feeding, out, types))
+            else:
+                previous: tuple[str, str] | None = None
+                for i, (consumer, feeding, out, types) in enumerate(plans):
+                    gen = key if i == 0 else (f"{key[0]}#{i + 1}", key[1])
+                    if gen not in instances:
+                        instances[gen] = instances[key]
+                        definitions[gen] = d
+                    cols = [Column(name=c.to_field, type=types[c.to_field]) for c in feeding]
+                    spliced[gen] = (cols, out.to_field, previous)
+                    previous = feeding[0].from_inst
+                    rest = [c for c in connectors if c not in feeding and c is not out]
+                    connectors = [
+                        *rest,
+                        *(Connector(c.from_inst, c.from_field, gen, c.to_field) for c in feeding),
+                        *(Connector(gen, c.to_field, consumer, c.to_field) for c in feeding),
+                        Connector(gen, out.to_field, consumer, out.to_field),
+                    ]
         return connectors, spliced
 
     def port_types(
@@ -1135,7 +1171,7 @@ class Normalizer:
         return {p.name: p.type for p in _ports(definition) if p.is_input}
 
     def build_sequence(
-        self, folder: Folder, definition: RNode, key: tuple[str, str], ctx: FlowCtx
+        self, folder: Folder, definition: RNode, key: tuple[str, str], ctx: FlowCtx, oid: str
     ) -> Built:
         if key not in ctx.sequences:
             raise Unsupported(
@@ -1164,9 +1200,9 @@ class Normalizer:
                 source=self.ref(definition, "pc.parameter.sequence-start"),
             ),
         )
-        cols, column = ctx.sequences[key]
+        cols, column, after = ctx.sequences[key]
         out = [*cols, Column(name=column, type=DataType(kind=TypeKind.BIGINT))]
-        return Built(
+        built = Built(
             SequenceOp(column=column, start_parameter_id=pid, increment=increment),
             [OutputGroup(columns=out)],
             "pc.op.sequence",
@@ -1177,6 +1213,11 @@ class Normalizer:
                 "(supply the start value as a run parameter)"
             ],
         )
+        if after is not None:  # second consumer: its block follows the first consumer's rows
+            built.extra_edges.append(
+                DataEdge(from_operation=ctx.op_id(after), to_operation=oid, to_input="after")
+            )
+        return built
 
     @staticmethod
     def keyed_write(ds_id: str, definition: RNode, writer: dict[str, str]) -> Built:
@@ -2238,6 +2279,9 @@ def convert(t: Translation, target: DataType, text: str) -> ExpressionNode:
         src is TypeKind.DECIMAL and t.type.precision is not None and not t.type.scale
     )
     if whole and target.kind is TypeKind.STRING:  # exact: the number's decimal digits
+        return CallNode(function="to_string", args=[t.node])
+    if src is TypeKind.DECIMAL and target.kind is TypeKind.STRING:
+        t.notes.add("pc.expr.number-text")
         return CallNode(function="to_string", args=[t.node])
     if src is TypeKind.BOOLEAN and target.kind is TypeKind.STRING:  # TRUE/FALSE are 1/0
         integer = CastNode(to=DataType(kind=TypeKind.INTEGER), arg=t.node)

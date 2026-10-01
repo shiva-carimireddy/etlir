@@ -53,7 +53,9 @@ class FunctionSpec:
 
 
 # Timestamp format strings: tokens YYYY MM DD HH24 MI SS, separated by any of "-/ :.T".
-FORMAT_TOKENS = ("YYYY", "HH24", "MM", "DD", "MI", "SS")
+# YY (last two digits of the year) is valid for formatting only: parsing it needs a century.
+FORMAT_TOKENS = ("YYYY", "YY", "HH24", "MM", "DD", "MI", "SS")
+FORMAT_ONLY_TOKENS = ("YY",)
 FORMAT_SEPARATORS = "-/ :.T"
 UNITS = ("year", "month", "day", "hour", "minute", "second")
 
@@ -273,7 +275,8 @@ CATALOG: dict[str, FunctionSpec] = {
             1,
             1,
             False,
-            STRICT + " Decimal digits of a whole number (integer types, decimals with scale 0).",
+            STRICT + " Plain decimal notation of a number: integers as digits, decimals without "
+            "trailing fractional zeros (and no trailing point).",
             _fixed(TypeKind.STRING),
         ),
         FunctionSpec(
@@ -281,7 +284,7 @@ CATALOG: dict[str, FunctionSpec] = {
             2,
             2,
             False,
-            STRICT + " Formats with a canonical format (YYYY MM DD HH24 MI SS).",
+            STRICT + " Formats with a canonical format (YYYY YY MM DD HH24 MI SS).",
             _fixed(TypeKind.STRING),
             (1,),
         ),

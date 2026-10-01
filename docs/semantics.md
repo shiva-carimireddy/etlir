@@ -24,7 +24,7 @@ edges into one slot come from the same upstream output group (IR-V-013).
 | `join` | Slots `left`/`right` with disjoint column names; `inner`/`left`/`right`/`full`; NULL keys never match. |
 | `aggregate` | Groups by the key columns (NULL keys form one group); aggregation expressions may use aggregate functions and group keys only. With **no** key columns it is a global aggregate: exactly one output row, even for empty input. With no aggregations it is DISTINCT over the keys. |
 | `lookup` | For each row of slot `in`, the rows of slot `lookup` where the condition is TRUE (NULL never matches). Input columns pass through; `returns` maps lookup columns to output columns, NULL when nothing matches. `any`: the first match when lookup columns are sorted ascending in declared order, NULLs last (deterministic); `error`: the task fails if any input row has more than one match; `all`: one output row per match. The two slots' column names are disjoint. |
-| `sequence` | Passes the input through and adds a bigint column: the rows, ordered by **all** their columns ascending (NULLs first), receive `start`, `start + increment`, … where `start` is a parameter. Rows equal in every column are interchangeable, so the result is deterministic. |
+| `sequence` | Passes the input through and adds a bigint column: the rows, ordered by **all** their columns ascending (NULLs first), receive `start`, `start + increment`, … where `start` is a parameter. Rows equal in every column are interchangeable, so the result is deterministic. With slot `after` connected, numbering continues after `count(after)` values (consecutive blocks for two consumers of one generator). |
 | `write` | Writes the input to the dataset; dataset columns without an input column are NULL. Modes: `append`, `overwrite`, `error_if_exists`, and the keyed modes `update` and `upsert` (below). |
 | `unsupported` | A recognized source construct with no semantics yet. Always blocks. |
 
@@ -81,7 +81,7 @@ Expression nodes: `literal`, `column`, `parameter`, `call`, `cast`, `opaque`. Ev
 | `matches_number(s)` | NULL-strict; TRUE if `s` is optional spaces, optional sign, digits with an optional fraction (or a fraction alone), an optional exponent, optional spaces. |
 | `is_whitespace(s)` | NULL-strict; TRUE if `s` is non-empty and only space, tab, newline, carriage return, form feed or vertical tab. |
 | `leading_decimal(s, p)` | NULL if `s` is NULL; the value of the longest numeric prefix after leading spaces (sign, digits, optional fraction), **0 if there is none**, rounded half away from zero to `p` places. |
-| `to_string(x)` | NULL-strict; the decimal digits of a whole number (integer types, decimals with scale 0). |
+| `to_string(x)` | NULL-strict; plain decimal notation: integers as digits, decimals without trailing fractional zeros or a trailing point (`12.50` → `12.5`, `3.00` → `3`). |
 | `format_timestamp(t, f)` | NULL-strict; `t` formatted with `f`. |
 | `parse_timestamp(s, f)` | NULL if `s` is NULL; `s` must match `f` exactly (every field at its full width, a valid calendar date and time), **otherwise the task fails**. |
 | `can_parse_timestamp(s, f)` | NULL-strict; TRUE if `parse_timestamp(s, f)` would succeed. |
@@ -98,7 +98,8 @@ strings of `replace`/`replace_ci`, the scale of `leading_decimal`, the places of
 `trunc`/`round`, formats and units, and the `fail` message.
 
 **Timestamp formats** are built from the tokens `YYYY` (4 digits), `MM`, `DD`, `HH24`, `MI`,
-`SS` (2 digits each) and the separators `- / : . T` and space, for example `YYYY-MM-DD`,
+`SS` (2 digits each), `YY` (last two digits of the year; formatting only, since parsing it
+would need a century) and the separators `- / : . T` and space, for example `YYYY-MM-DD`,
 `MM/DD/YYYY HH24:MI:SS` or `YYYYMMDD`. Nothing else is part of the canonical format language.
 
 **Built-in parameters.** A parameter with `builtin = "run_start_time"` has the run's start

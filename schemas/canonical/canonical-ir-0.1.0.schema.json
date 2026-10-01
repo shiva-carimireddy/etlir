@@ -1257,7 +1257,7 @@
     },
     "SequenceOp": {
       "additionalProperties": false,
-      "description": "Pass the input through and add ``column`` (bigint): the input rows, ordered by all\ntheir columns ascending with NULLs first, receive start, start + increment, … where\nstart is the value of parameter ``start_parameter_id``. Rows that are equal in every\ncolumn are interchangeable, so the result is deterministic.",
+      "description": "Pass the input through and add ``column`` (bigint): the input rows, ordered by all\ntheir columns ascending with NULLs first, receive start, start + increment, … where\nstart is the value of parameter ``start_parameter_id``. Rows that are equal in every\ncolumn are interchangeable, so the result is deterministic. When slot ``after`` is\nconnected, numbering continues after as many values as ``after`` has rows (start +\ncount(after) * increment): two consumers of one generator get consecutive blocks.",
       "properties": {
         "column": {
           "title": "Column",

@@ -27,7 +27,9 @@ All notable changes are documented here. The format follows
 - Keyed writes: `WriteOp` modes `update` and `upsert` with `keys`, in both targets.
   PowerCenter Update Strategy with constant row operations and data-driven sessions.
 - Canonical `sequence` operation; PowerCenter Sequence Generator (deterministic numbering,
-  start value as a run parameter).
+  start value as a run parameter, consecutive blocks for two consumers). PowerCenter
+  Sorter (pass-through, or DISTINCT).
+- `to_string` on fractional decimals; `YY` in timestamp formatting.
 - PowerCenter Aggregator without group-by ports (no row for empty input), unknown `$PM…`
   variables as run parameters, booleans into string ports, unused unconnected ports.
 - Invariants IR-V-018 (missing input) and IR-V-019 (keyed write keys); a dataflow violating

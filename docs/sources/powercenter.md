@@ -77,7 +77,10 @@ merge traces back to one of these unsupported upstreams).
   run parameter whose default is the export's *Current Value* (*Start Value* with *Reset*).
   `APPROXIMATED`: values are assigned in a deterministic order (all columns ascending), not
   PowerCenter's arrival order, and the final value is not persisted between runs. Cycling
-  generators, end values, `CURRVAL` and several consumers are unsupported.
+  generators, end values and `CURRVAL` are unsupported. With two consumers, each gets a
+  block of consecutive values (as PowerCenter documents); the first block goes to the
+  consumer that sorts first by name.
+* **Sorter**: rows pass unchanged (relations are unordered); *Distinct* removes duplicates.
 * **Aggregator without group-by ports**: a global aggregate that emits no row for empty
   input (aggregate with a row count, then a filter on the count). `APPROXIMATED`: the
   empty-input behavior follows community documentation, not a verified runtime.
@@ -147,8 +150,8 @@ Functions:
 | `REPLACECHR(flag, s, chars, new)` | `translate` | flag 0 adds both letter cases; NULL/`''` `new` removes |
 | `REPLACESTR(flag, s, old, new)` | `replace` / `replace_ci` | one search string only |
 | `IS_NUMBER`, `IS_SPACES` | `matches_number`, `is_whitespace` | |
-| `TO_DATE(s[, fmt])`, `IS_DATE(s[, fmt])`, `TO_CHAR(date[, fmt])` | `parse_timestamp`, `can_parse_timestamp`, `format_timestamp` | formats limited to `YYYY MM DD HH24 MI SS`; no format → `MM/DD/YYYY HH24:MI:SS` (`pc.expr.default-date-format`) |
-| `TO_CHAR(n)` | `to_string` | whole numbers only; other numbers are opaque (formatting unverified) |
+| `TO_DATE(s[, fmt])`, `IS_DATE(s[, fmt])`, `TO_CHAR(date[, fmt])` | `parse_timestamp`, `can_parse_timestamp`, `format_timestamp` | formats limited to `YYYY MM DD HH24 MI SS` (and `YY` for `TO_CHAR`); no format → `MM/DD/YYYY HH24:MI:SS` (`pc.expr.default-date-format`) |
+| `TO_CHAR(n)` | `to_string` | whole numbers exactly; fractional decimals as plain notation without trailing zeros (`pc.expr.number-text`: PowerCenter uses at most 15 significant digits); doubles are opaque |
 | `TO_DECIMAL(v[, scale])`, `TO_INTEGER(v[, flag])` | `leading_decimal` / `round` / `trunc` + cast | strings convert their leading numeric part, 0 if none (`pc.expr.to-number`) |
 | `TRUNC(n[, p])`, `ROUND(n[, p])` | `trunc`, `round` | `p` a literal ≥ 0 |
 | `TRUNC(date[, fmt])`, `ADD_TO_DATE`, `GET_DATE_PART` | `trunc_timestamp`, `add_interval`, `timestamp_part` | units Y…/MM/MON/MONTH/D…/HH…/MI/SS |

@@ -61,6 +61,8 @@ APPROXIMATION_NOTES = {
     "default MM/DD/YYYY HH24:MI:SS.",
     "pc.expr.to-number": "String-to-number conversion uses the documented rule (leading numeric "
     "part, 0 if none); not verified against a live runtime.",
+    "pc.expr.number-text": "A fractional decimal converts to its exact plain notation without "
+    "trailing zeros; PowerCenter formats at most 15 significant digits (scientific beyond).",
     "pc.expr.abort-message": "ABORT with a computed message fails the run with a fixed message.",
     "pc.expr.empty-output": "An output port with an empty expression yields NULL.",
     "pc.expr.to-decimal-scale": "TO_DECIMAL without a scale is converted with 18 decimal places.",
@@ -361,6 +363,9 @@ class _Converter:
             return t
         if _whole(t[1]):  # whole numbers convert to their decimal digits
             return self.call("to_string", t)
+        if t[1].kind is TypeKind.DECIMAL:
+            self.notes.add("pc.expr.number-text")
+            return self.call("to_string", t)
         raise Opaque(f"{t[1].kind.value} value used as a string (implicit conversion)")
 
     def as_ts(self, t: Typed, fn: str) -> Typed:
@@ -393,10 +398,11 @@ class _Converter:
         if a is None:
             self.notes.add("pc.expr.default-date-format")
             return DEFAULT_DATE_FORMAT
-        fmt = self.str_literal(a, f"{fn} format")
-        if fmt is None or parse_format(fmt.upper()) is None:
+        fmt = (self.str_literal(a, f"{fn} format") or "").upper()
+        tokens = parse_format(fmt)
+        if tokens is None or (fn != "TO_CHAR" and "YY" in tokens):
             raise Opaque(f"{fn} format {fmt!r} is not supported")
-        return fmt.upper()
+        return fmt
 
     def date_unit(self, a: Ast, fn: str) -> Typed:
         fmt = self.str_literal(a, f"{fn} format")
@@ -782,6 +788,9 @@ class _Converter:
         if kind is TypeKind.STRING or _is_null_literal(value):
             return value
         if _whole(value[1]):
+            return self.call("to_string", value)
+        if kind is TypeKind.DECIMAL:
+            self.notes.add("pc.expr.number-text")
             return self.call("to_string", value)
         raise Opaque(f"TO_CHAR of a {kind.value} value (number formatting unverified)")
 

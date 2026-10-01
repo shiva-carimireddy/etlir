@@ -283,7 +283,15 @@ def _literal(node: CallNode, i: int) -> Any:
     return arg.value
 
 
-_STRFTIME = {"YYYY": "%Y", "MM": "%m", "DD": "%d", "HH24": "%H", "MI": "%M", "SS": "%S"}
+_STRFTIME = {
+    "YYYY": "%Y",
+    "YY": "%y",
+    "MM": "%m",
+    "DD": "%d",
+    "HH24": "%H",
+    "MI": "%M",
+    "SS": "%S",
+}
 _UNITS = ("year", "month", "day", "hour", "minute", "second")
 _PUNCT = set("""!"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~""")
 
@@ -339,10 +347,18 @@ def _extended(node: CallNode, a: list[str], arg_types: list[DataType]) -> str:
         value = f"CAST(CASE WHEN {prefix} = '' THEN '0' ELSE {prefix} END AS DECIMAL(38,18))"
         return f"CAST(round({value}, {scale}) AS DECIMAL(38,{scale}))"
     if fn == "to_string":
+        if arg_types[0].kind is TypeKind.DECIMAL:  # no trailing fractional zeros
+            text = f"CAST({a[0]} AS VARCHAR)"
+            return (
+                f"(CASE WHEN strpos({text}, '.') > 0 "
+                f"THEN rtrim(rtrim({text}, '0'), '.') ELSE {text} END)"
+            )
         return f"CAST({a[0]} AS VARCHAR)"
     if fn == "format_timestamp":
         return f"strftime({a[0]}, {lit(_format(_literal(node, 1))[0])})"
     if fn in ("parse_timestamp", "can_parse_timestamp"):
+        if "YY" in (parse_format(str(_literal(node, 1))) or []):
+            raise Unlowerable("a two-digit year cannot be parsed (no century)")
         fmt, regex = _format(_literal(node, 1))
         parsed = f"try_strptime({a[0]}, {lit(fmt)})"
         ok = f"regexp_matches({a[0]}, {lit(regex)}) AND {parsed} IS NOT NULL"
@@ -546,6 +562,9 @@ class _Job:
                     f"CAST(getvariable({lit(var)}) AS BIGINT) + "
                     f"(row_number() OVER (ORDER BY {order}) - 1) * {spec.increment}"
                 )
+                if "after" in s.inputs:
+                    after = self.src(s.inputs["after"])
+                    number += f" + (SELECT count(*) FROM {after}) * {spec.increment}"
                 self.create(
                     self.view(s.output_relation()),
                     f"SELECT {cols(s.outputs[0].columns)} FROM "

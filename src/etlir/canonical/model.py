@@ -279,7 +279,9 @@ class SequenceOp(_Model):
     """Pass the input through and add ``column`` (bigint): the input rows, ordered by all
     their columns ascending with NULLs first, receive start, start + increment, … where
     start is the value of parameter ``start_parameter_id``. Rows that are equal in every
-    column are interchangeable, so the result is deterministic."""
+    column are interchangeable, so the result is deterministic. When slot ``after`` is
+    connected, numbering continues after as many values as ``after`` has rows (start +
+    count(after) * increment): two consumers of one generator get consecutive blocks."""
 
     kind: Literal["sequence"] = "sequence"
     column: str
