@@ -232,6 +232,70 @@ def write(ctx: Context, binding_id: str, df: DataFrame, mode: str) -> None:
         raise ValueError(f"unsupported output format '{fmt}' for binding '{binding_id}'")
 
 
+def write_keyed(
+    spark: SparkSession,
+    ctx: Context,
+    binding_id: str,
+    df: DataFrame,
+    mode: str,
+    keys: list[str],
+    provided: list[str],
+) -> None:
+    """Keyed update/upsert of an existing jsonl dataset (see WriteOp in the Canonical IR)."""
+    b = ctx.binding(binding_id)
+    if b.get("format", "jsonl") != "jsonl":
+        raise ValueError(f"keyed writes need a jsonl binding ('{binding_id}')")
+    dupes = df.groupBy(*keys).count().filter(F.col("count") > 1).limit(1).collect()
+    if dupes:
+        raise ValueError(f"duplicate keys {keys} in rows written to '{binding_id}': {dupes[0]}")
+    old = spark.createDataFrame(_read_jsonl_rows(Path(ctx.path(b)), df.schema), df.schema)
+    new = df.withColumn("__matched", F.lit(True))
+    on = reduce(lambda a, c: a & c, [old[k] == new[k] for k in keys])
+    joined = old.join(new, on, "left")
+    cols = [
+        F.when(new["__matched"], new[c]).otherwise(old[c]).alias(c)
+        if c in provided and c not in keys
+        else old[c].alias(c)
+        for c in df.columns
+    ]
+    result = joined.select(*cols)
+    if mode == "upsert":
+        result = result.unionByName(df.join(old, [df[k] == old[k] for k in keys], "left_anti"))
+    # Materialize before the target is replaced.
+    result = spark.createDataFrame(result.collect(), df.schema)
+    write(ctx, binding_id, result, "overwrite")
+
+
+def _read_jsonl_rows(path: Path, schema: T.StructType) -> list[tuple[Any, ...]]:
+    """Rows of an existing jsonl dataset (absent: none), typed by ``schema``."""
+    files = sorted(path.glob("*.json")) if path.is_dir() else [path] if path.exists() else []
+    rows = []
+    for f in files:
+        for line in f.read_text("utf-8").splitlines():
+            if line.strip():
+                record = json.loads(line)
+                rows.append(tuple(_typed(record.get(fl.name), fl.dataType) for fl in schema))
+    return rows
+
+
+def _typed(value: Any, t: T.DataType) -> Any:
+    if value is None:
+        return None
+    if isinstance(t, T.DecimalType):
+        return decimal.Decimal(str(value))
+    if isinstance(t, T.TimestampType):
+        return _dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if isinstance(t, T.DateType):
+        return _dt.date.fromisoformat(str(value)[:10])
+    if isinstance(t, (T.IntegerType, T.LongType, T.ShortType, T.ByteType)):
+        return int(value)
+    if isinstance(t, (T.DoubleType, T.FloatType)):
+        return float(value)
+    if isinstance(t, T.BooleanType):
+        return value if isinstance(value, bool) else str(value).lower() == "true"
+    return str(value) if not isinstance(value, str) else value
+
+
 def _json_value(v: Any) -> Any:
     if isinstance(v, decimal.Decimal):
         return str(v)

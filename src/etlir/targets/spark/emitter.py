@@ -51,10 +51,11 @@ _SUPPORTED = [
             "join",
             "aggregate",
             "lookup",
+            "sequence",
         )
     ),
     *(f"lookup.{p}" for p in ("any", "error", "all")),
-    *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists")),
+    *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists", "update", "upsert")),
     "task.dataflow",
     *(f"dependency.{c}" for c in ("success", "failure", "completion")),
     *(
@@ -487,8 +488,17 @@ class _Job:
                 + f".alias({c.name!r})"
                 for c in ds.columns
             )
+            binding = ds.binding_id or ds.id
+            if spec.keys:
+                provided = [c.name for c in ds.columns if c.name in present]
+                self.emit(
+                    f"    rt.write_keyed(spark, ctx, {binding!r}, "
+                    f"{self.slot(ref)}.select({items}), "
+                    f"{spec.mode.value!r}, {spec.keys!r}, {provided!r})"
+                )
+                return
             self.emit(
-                f"    rt.write(ctx, {ds.binding_id or ds.id!r}, "
+                f"    rt.write(ctx, {binding!r}, "
                 f"{self.slot(ref)}.select({items}), {spec.mode.value!r})"
             )
             return
@@ -527,6 +537,17 @@ class _Job:
             self.emit(
                 f"    {self.var(s.output_relation())} = "
                 f"{src}.select({outcols(s.outputs[0].columns, assigned, atypes)})"
+            )
+        elif s.kind == "sequence":
+            ordering = ", ".join(
+                f"rt.col({c.name!r}).asc_nulls_first()" for c in s.inputs["in"].columns
+            )
+            start = f"rt.param(ctx, {spec.start_parameter_id!r}, 'bigint')"
+            self.emit(
+                f"    {self.var(s.output_relation())} = {src}.withColumn({spec.column!r}, "
+                f"({start} + (F.row_number().over(rt.Window.orderBy({ordering})) - 1) "
+                f"* {spec.increment}).cast('bigint'))"
+                f".select({outcols(s.outputs[0].columns)})"
             )
         elif s.kind == "filter":
             self.emit(

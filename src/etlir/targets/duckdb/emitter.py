@@ -58,10 +58,11 @@ _SUPPORTED = [
             "join",
             "aggregate",
             "lookup",
+            "sequence",
         )
     ),
     *(f"lookup.{p}" for p in ("any", "error", "all")),
-    *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists")),
+    *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists", "update", "upsert")),
     "task.dataflow",
     *(f"dependency.{c}" for c in ("success", "failure", "completion")),
     *(
@@ -386,7 +387,7 @@ class _Job:
         self.lines: list[str] = []
         self.op_lines: dict[str, int] = {}
         self.reads: dict[str, list[tuple[str, str]]] = {}
-        self.writes: list[tuple[str, str, str]] = []
+        self.writes: list[tuple[str, str, str, list[str], list[str]]] = []
         used = sorted({p.id for p in doc.parameters})
         self.params = {
             pid: (f"p{i + 1}", sql_type(p.type) or "VARCHAR")
@@ -479,7 +480,10 @@ class _Job:
             )
             view = f"w{len(self.writes) + 1}"
             self.create(view, f"SELECT {items} FROM {self.src(ref)}")
-            self.writes.append((ds.binding_id or ds.id, view, spec.mode.value))
+            provided = [c.name for c in ds.columns if c.name in present]
+            self.writes.append(
+                (ds.binding_id or ds.id, view, spec.mode.value, list(spec.keys), provided)
+            )
         elif s.kind == "lookup":
             i_src, l_src = self.src(s.inputs["in"]), self.src(s.inputs["lookup"])
             rets = {m.to_column: q(m.from_column) for m in spec.returns}
@@ -534,6 +538,18 @@ class _Job:
                 self.create(
                     self.view(s.output_relation()),
                     f"SELECT {cols(s.outputs[0].columns, assigned)} FROM {src}",
+                )
+            elif s.kind == "sequence":
+                order = ", ".join(f"{q(c.name)} ASC NULLS FIRST" for c in s.inputs["in"].columns)
+                var, _ = self.params[spec.start_parameter_id]
+                number = (
+                    f"CAST(getvariable({lit(var)}) AS BIGINT) + "
+                    f"(row_number() OVER (ORDER BY {order}) - 1) * {spec.increment}"
+                )
+                self.create(
+                    self.view(s.output_relation()),
+                    f"SELECT {cols(s.outputs[0].columns)} FROM "
+                    f"(SELECT *, CAST({number} AS BIGINT) AS {q(spec.column)} FROM {src})",
                 )
             elif s.kind == "filter":
                 self.create(

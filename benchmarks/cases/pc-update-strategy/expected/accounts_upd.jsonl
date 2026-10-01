@@ -1,0 +1,3 @@
+{"ACCT_ID": "1", "NAME": "Ann", "BALANCE": "10.00", "NOTE": "keep-1"}
+{"ACCT_ID": "2", "NAME": "Bea", "BALANCE": "20.50", "NOTE": "keep-2"}
+{"ACCT_ID": "3", "NAME": null, "BALANCE": "0.00", "NOTE": "keep-3"}

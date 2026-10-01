@@ -152,6 +152,8 @@ class WriteMode(StrEnum):
     APPEND = "append"
     OVERWRITE = "overwrite"
     ERROR_IF_EXISTS = "error_if_exists"
+    UPDATE = "update"
+    UPSERT = "upsert"
 
 
 class Assignment(_Model):
@@ -177,11 +179,18 @@ class ReadOp(_Model):
 
 
 class WriteOp(_Model):
-    """Write the input to ``dataset_id``. Dataset columns without an input column are NULL."""
+    """Write the input to ``dataset_id``. Dataset columns without an input column are NULL.
+
+    Keyed modes match input rows to existing rows on ``keys`` (plain equality, so NULL keys
+    never match): ``update`` sets the input's columns on matching rows and discards input
+    rows without a match; ``upsert`` also inserts them. Columns the input does not provide
+    keep their existing values. Duplicate keys in the input fail the task.
+    """
 
     kind: Literal["write"] = "write"
     dataset_id: Identifier
     mode: WriteMode = WriteMode.APPEND
+    keys: list[str] = Field(default_factory=list, description="Key columns of keyed modes.")
 
 
 class ProjectOp(_Model):
@@ -266,6 +275,18 @@ class AggregateOp(_Model):
     aggregations: list[Aggregation]
 
 
+class SequenceOp(_Model):
+    """Pass the input through and add ``column`` (bigint): the input rows, ordered by all
+    their columns ascending with NULLs first, receive start, start + increment, … where
+    start is the value of parameter ``start_parameter_id``. Rows that are equal in every
+    column are interchangeable, so the result is deterministic."""
+
+    kind: Literal["sequence"] = "sequence"
+    column: str
+    start_parameter_id: Identifier
+    increment: int = 1
+
+
 class UnionOp(_Model):
     kind: Literal["union"] = "union"
     distinct: bool = False
@@ -291,6 +312,7 @@ OperationSpec = Annotated[
         LookupOp,
         AggregateOp,
         UnionOp,
+        SequenceOp,
         UnsupportedOp,
     ],
     Field(discriminator="kind"),

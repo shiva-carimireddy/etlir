@@ -24,10 +24,18 @@ edges into one slot come from the same upstream output group (IR-V-013).
 | `join` | Slots `left`/`right` with disjoint column names; `inner`/`left`/`right`/`full`; NULL keys never match. |
 | `aggregate` | Groups by the key columns (NULL keys form one group); aggregation expressions may use aggregate functions and group keys only. With **no** key columns it is a global aggregate: exactly one output row, even for empty input. With no aggregations it is DISTINCT over the keys. |
 | `lookup` | For each row of slot `in`, the rows of slot `lookup` where the condition is TRUE (NULL never matches). Input columns pass through; `returns` maps lookup columns to output columns, NULL when nothing matches. `any`: the first match when lookup columns are sorted ascending in declared order, NULLs last (deterministic); `error`: the task fails if any input row has more than one match; `all`: one output row per match. The two slots' column names are disjoint. |
-| `write` | Writes the input to the dataset; dataset columns without an input column are NULL. Modes: `append`, `overwrite`, `error_if_exists`. |
+| `sequence` | Passes the input through and adds a bigint column: the rows, ordered by **all** their columns ascending (NULLs first), receive `start`, `start + increment`, … where `start` is a parameter. Rows equal in every column are interchangeable, so the result is deterministic. |
+| `write` | Writes the input to the dataset; dataset columns without an input column are NULL. Modes: `append`, `overwrite`, `error_if_exists`, and the keyed modes `update` and `upsert` (below). |
 | `unsupported` | A recognized source construct with no semantics yet. Always blocks. |
 
-Row order is not part of the semantics of any 0.1 operation.
+**Keyed writes.** `update` and `upsert` match input rows to the dataset's existing rows on
+the write's `keys` (plain equality, so NULL keys never match). Matched rows take the input's
+values for the columns the input provides; columns it does not provide keep their values.
+`update` discards input rows without a match; `upsert` inserts them (unprovided columns
+NULL). Duplicate keys in the input fail the task (the order in which several updates would
+apply is not defined). A dataset that does not exist yet has no rows.
+
+Row order is not part of the semantics of any operation: `sequence` defines its own order.
 
 ## Types and casts
 

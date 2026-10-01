@@ -85,8 +85,11 @@ unsupported operation, task or opaque expression, which blocks the affected path
 | `operation.project` | supported | supported |
 | `operation.read` | constrained (c) | constrained (c) |
 | `operation.route` | supported | supported |
+| `operation.sequence` | supported | supported |
 | `operation.write` | constrained (c) | constrained (c) |
 | `task.dataflow` | supported | supported |
 | `write.append` | supported | supported |
 | `write.error_if_exists` | supported | supported |
 | `write.overwrite` | supported | supported |
+| `write.update` | supported | supported |
+| `write.upsert` | supported | supported |

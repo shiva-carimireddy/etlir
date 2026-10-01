@@ -1,6 +1,6 @@
 # Benchmark case manifest. See benchmarks/protocol.md for the meaning of each field.
 id = "pc-mixed-blocked"
-title = "Fail-closed behavior: a clean branch runs; a sequence generator, a non-row-aligned merge, a SELECT * override, a stateful variable, a command task and a custom link condition are blocked"
+title = "Fail-closed behavior: a clean branch runs; a cycling sequence generator, a non-row-aligned merge, a SELECT * override, a stateful variable, a command task and a custom link condition are blocked"
 provenance = "original-synthetic"
 license = "Apache-2.0"
 source = "powercenter-xml"

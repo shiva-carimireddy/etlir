@@ -170,8 +170,7 @@ def test_unsupported_constructs_are_kept_with_reasons(mixed_doc) -> None:  # typ
         for o in df.operations
         if o.spec.kind == "unsupported"
     }
-    assert "'Sequence' is not supported" in unsupported[("s_m_CUSTOMER_KEYS", "SEQ_KEY")]
-    assert "unsupported upstream ['SEQ_KEY']" in unsupported[("s_m_CUSTOMER_KEYS", "CUSTOMER_KEYS")]
+    assert "cycling sequence generator" in unsupported[("s_m_CUSTOMER_KEYS", "SEQ_KEY")]
     assert "SELECT * is not supported" in unsupported[("s_m_CUSTOMER_OVERRIDE", "SQ_CUSTOMERS")]
     assert "not row-aligned" in unsupported[("s_m_NOT_ALIGNED", "EXP_MIX")]
     opaque = [

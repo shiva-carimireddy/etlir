@@ -64,6 +64,30 @@ Normalizer, Sorter, Rank, Union, Custom, Stored Procedure, Transaction Control, 
 dynamic lookup caches, and merges that are not row-aligned (in the public corpus every such
 merge traces back to one of these unsupported upstreams).
 
+### Update strategies, sequences, global aggregators
+
+* **Update Strategy** (constant `DD_INSERT`/`DD_UPDATE`, or 0/1): rows pass unchanged. A
+  session that treats rows as *Insert* inserts them all. A *Data driven* session applies the
+  constant at each target: `DD_UPDATE` becomes a keyed `update` on the target's primary key
+  (*Update as Update*), an `upsert` (*Update else Insert*) or an insert (*Update as Insert*).
+  Row-level expressions, `DD_DELETE`/`DD_REJECT`, flat-file targets, targets without a primary
+  key and targets truncated before the load are unsupported.
+* **Sequence Generator**: when `NEXTVAL` feeds one transformation that has one other
+  upstream, that upstream is routed through a canonical `sequence` op. The start value is a
+  run parameter whose default is the export's *Current Value* (*Start Value* with *Reset*).
+  `APPROXIMATED`: values are assigned in a deterministic order (all columns ascending), not
+  PowerCenter's arrival order, and the final value is not persisted between runs. Cycling
+  generators, end values, `CURRVAL` and several consumers are unsupported.
+* **Aggregator without group-by ports**: a global aggregate that emits no row for empty
+  input (aggregate with a row count, then a filter on the count). `APPROXIMATED`: the
+  empty-input behavior follows community documentation, not a verified runtime.
+* A transformation port that receives nothing and passes nothing on is dropped; a
+  transformation with no connected input at all is unsupported.
+* A boolean written to a string port becomes `"1"`/`"0"` (PowerCenter booleans are integers).
+* `$PM…` variables other than the names above (for example `$PMRepositoryServiceName`) are
+  values of the run environment: run parameters without a default. Run statistics such as
+  `$PMTarget@numAffectedRows` stay opaque.
+
 ### Lookup policies
 
 | PowerCenter "Lookup policy on multiple match" | Canonical | Evidence |

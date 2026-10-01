@@ -15,7 +15,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from etlir.canonical.invariants import walk_expression
+from etlir.canonical.invariants import validate, walk_expression
 from etlir.canonical.model import CallNode, CanonicalDocument, CastNode, OpaqueNode, SourceRef
 from etlir.evidence import Diagnostic, Severity
 
@@ -113,6 +113,14 @@ def analyze(
         return state
 
     blocked_dataflows: set[str] = set(extra_blocked or {})
+    # A dataflow that violates a structural invariant is never emitted, whatever the target.
+    errors = [d for d in validate(doc) if d.severity is Severity.ERROR]
+    for df in doc.dataflows:
+        members = {df.id, *(o.id for o in df.operations), *(e.id for e in df.expressions)}
+        for d in errors:
+            if d.subject_id in members:
+                decide(d.subject_id, f"invariant.{d.code}", df.source)
+                blocked_dataflows.add(df.id)
     for df in doc.dataflows:
         for op in df.operations:
             constructs = [f"operation.{op.spec.kind}"]

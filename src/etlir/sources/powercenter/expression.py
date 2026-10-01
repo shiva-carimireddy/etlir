@@ -92,6 +92,8 @@ class Env:
     stateful: set[str] = field(default_factory=set)
     # Built-in variables with a known value: SESSSTARTTIME, $PMMappingName, ... (upper case).
     builtins: dict[str, tuple[ExpressionNode, DataType]] = field(default_factory=dict)
+    # Turns another $PM... variable (a value of the run environment) into a run parameter.
+    pm_parameter: Callable[[str], tuple[ExpressionNode, DataType]] | None = None
     allow_aggregates: bool = False
     group_keys: set[str] | None = None
     # Resolves an unconnected lookup call :LKP.name(args) to a column (see normalize).
@@ -465,6 +467,8 @@ class _Converter:
             if name == "SYSDATE":
                 self.notes.add("pc.expr.sysdate")
             return self.env.builtins[name]
+        if re.fullmatch(r"\$PM[A-Z]+", name) and self.env.pm_parameter is not None:
+            return self.env.pm_parameter(name)
         if name.startswith("$"):
             raise Opaque(f"built-in variable {name} is not supported")
         raise Opaque(f"built-in {name} depends on the run time and is not supported")

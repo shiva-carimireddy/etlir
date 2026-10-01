@@ -74,6 +74,13 @@ def _bindings(case: dict[str, Any], package: Path, run_dir: Path) -> Path:
                 "format": "jsonl",
                 "path": str(run_dir / "outputs" / spec["dataset"].split(":")[-1]),
             }
+    # [seed]: existing content of an output dataset before the run (keyed writes).
+    for bid, seed in case.get("seed", {}).items():
+        target = Path(out[bid]["path"])
+        if target.exists():
+            shutil.rmtree(target)
+        target.mkdir(parents=True)
+        shutil.copyfile(case["dir"] / seed, target / "part-00000.json")
     path = run_dir / "bindings.json"
     run_dir.mkdir(parents=True, exist_ok=True)
     write_json(path, out)
