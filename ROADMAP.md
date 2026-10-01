@@ -10,7 +10,7 @@ Status changes only when the listed evidence exists in the repository.
 | **G3** Spark emission | Emitter, manifest, jobs, workflow plan + runner, package validation, fail closed | **Done**, plus a second emitter (DuckDB, ADR-0006). |
 | **G4** Independent execution | Pinned environment, controlled inputs, independent expectations, comparator, mutations | **Done** on ten synthetic cases on both targets, including an expected-failure case and seeded keyed writes; mutation analysis in the benchmark. A container image is not yet published. |
 | **G5** Public corpus evaluation | Frozen protocol, per-group rows, analysis script | **Done.** Protocol v1 frozen (`benchmarks/protocol.md`); `etlir corpus`, `scripts/collect_results.py` and `scripts/paper_tables.py`; results in `results/v0.2.0/`. Timings and memory are out of scope for v1. |
-| **G6** Paper/release | Tagged release, archived DOI, claims audited against artifacts | **Open** until the 0.2.0 tag is archived with a DOI and the paper cites it. |
+| **G6** Paper/release | Tagged release, archived DOI, claims audited against artifacts | **In progress.** 0.2.0 is tagged, on PyPI and archived (doi:10.5281/zenodo.23073564); open until the paper cites it with claims audited against `results/v0.2.0`. |
 
 ## 0.2.0 in one paragraph
 

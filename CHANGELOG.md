@@ -5,7 +5,7 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/). The Canonical IR has its own version; see
 [ADR-0004](docs/decisions/0004-versioning-and-compatibility.md).
 
-## [0.2.0] - 2026-09-30
+## [0.2.0] - 2026-10-01
 
 Coverage release: the expression language, update strategies, sequence generators,
 sorters and global aggregators; a frozen evaluation protocol (v1) with committed results.
