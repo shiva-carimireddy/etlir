@@ -18,6 +18,17 @@ def _assert_all_pass(results: dict) -> None:  # type: ignore[type-arg]
         assert value["count"] == value["of"], (key, value, results["rows"])
 
 
+def test_benchmark_with_a_relative_output_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # CI passes a relative --out; seeded targets (keyed writes) must land where the job
+    # runtime looks for them.
+    monkeypatch.chdir(tmp_path)
+    case = CASES / "pc-update-strategy"
+    results = run_benchmark([case], Path("relative-out"), targets=["duckdb"], mutation_target=None)
+    _assert_all_pass(results)
+
+
 def test_benchmark_duckdb(tmp_path: Path) -> None:
     results = run_benchmark(CASE_DIRS, tmp_path, targets=["duckdb"])
     _assert_all_pass(results)

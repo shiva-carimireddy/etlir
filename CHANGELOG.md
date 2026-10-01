@@ -5,6 +5,15 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/). The Canonical IR has its own version; see
 [ADR-0004](docs/decisions/0004-versioning-and-compatibility.md).
 
+## [Unreleased]
+
+### Fixed
+
+- `etlir benchmark` with a relative `--out` seeded keyed-write targets in a different
+  directory from the one the job runtime used, so `pc-update-strategy` disagreed. Output
+  paths in the generated bindings are now absolute. The published `results/v0.2.0` were
+  produced with absolute paths and are not affected.
+
 ## [0.2.0] - 2026-10-01
 
 Coverage release: the expression language, update strategies, sequence generators,
