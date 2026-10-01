@@ -8,7 +8,8 @@ message: >-
 type: software
 title: "ETLIR: A Canonical Intermediate Representation for Traceable ETL Modernization"
 version: 0.2.0
-date-released: "2026-09-30"
+date-released: "2026-10-01"
+doi: 10.5281/zenodo.23073564
 abstract: >-
   ETLIR is an open-source framework for translating legacy ETL definitions into modern
   data platforms through a typed, versioned Canonical Intermediate Representation that
@@ -22,6 +23,13 @@ authors:
     email: shivacarimireddy@ieee.org
     affiliation: Independent Researcher
     # orcid: "https://orcid.org/0000-0000-0000-0000"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23073564
+    description: "ETLIR 0.2.0 (this release; cite it for results in results/v0.2.0)"
+  - type: doi
+    value: 10.5281/zenodo.23040381
+    description: "All versions of ETLIR (resolves to the latest release)"
 repository-code: "https://github.com/shiva-carimireddy/etlir"
 url: "https://github.com/shiva-carimireddy/etlir"
 license: Apache-2.0

@@ -10,6 +10,7 @@ cannot express are reported and **blocked**, never silently dropped or approxima
 
 [![CI](https://github.com/shiva-carimireddy/etlir/actions/workflows/ci.yml/badge.svg)](https://github.com/shiva-carimireddy/etlir/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23040381.svg)](https://doi.org/10.5281/zenodo.23040381)
 
 > **Status: 0.2.0 (alpha, research software).** The first reference pair, **Informatica
 > PowerCenter XML → Apache Spark**, runs end to end for a documented subset, with a second
@@ -138,7 +139,9 @@ pass the [conformance kit](src/etlir/testing/). Start with
 ## Citing ETLIR
 
 Cite the tagged release you used, via [CITATION.cff](CITATION.cff) (GitHub's "Cite this
-repository"), and its archived DOI when available, not the moving `main` branch.
+repository"), and its archived DOI, not the moving `main` branch. ETLIR 0.2.0, whose
+results are in `results/v0.2.0/`, is [doi:10.5281/zenodo.23073564](https://doi.org/10.5281/zenodo.23073564); all versions:
+[doi:10.5281/zenodo.23040381](https://doi.org/10.5281/zenodo.23040381).
 
 ## License and trademarks
 
