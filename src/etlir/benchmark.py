@@ -61,6 +61,9 @@ def _same_code(a: Path, b: Path) -> bool:
 
 
 def _bindings(case: dict[str, Any], package: Path, run_dir: Path) -> Path:
+    # Absolute paths: the job runtime resolves a relative path against the bindings file's
+    # directory, while seeding and comparison here work from the current directory.
+    run_dir = run_dir.resolve()
     example = json.loads((package / "bindings.example.json").read_text("utf-8"))
     declared = case.get("bindings", {})
     out: dict[str, Any] = {}
