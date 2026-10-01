@@ -57,6 +57,7 @@ _SUPPORTED = [
     *(f"lookup.{p}" for p in ("any", "error", "all")),
     *(f"write.{m}" for m in ("append", "overwrite", "error_if_exists", "update", "upsert")),
     "task.dataflow",
+    "task.notify",
     *(f"dependency.{c}" for c in ("success", "failure", "completion")),
     *(
         f"function.{f}"
@@ -120,6 +121,7 @@ _SUPPORTED = [
 ]
 
 _CONSTRAINED = {
+    "task.notify": ["the reference runner records the notification; it does not send it"],
     "operation.read": ["every column has a known type", "binding format is csv or jsonl"],
     "operation.write": ["binding format is jsonl or csv"],
 }

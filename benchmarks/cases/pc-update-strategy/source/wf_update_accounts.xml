@@ -91,6 +91,13 @@
                 <TASKINSTANCE DESCRIPTION="" ISENABLED="YES" NAME="Start" REUSABLE="NO" TASKNAME="Start" TASKTYPE="Start" />
                 <TASKINSTANCE DESCRIPTION="" ISENABLED="YES" NAME="s_m_UPDATE_ACCOUNTS" REUSABLE="NO" TASKNAME="s_m_UPDATE_ACCOUNTS" TASKTYPE="Session" TREAT_INPUTLINK_AS_AND="YES" />
                 <WORKFLOWLINK CONDITION="" FROMTASK="Start" TOTASK="s_m_UPDATE_ACCOUNTS" />
+                <TASK DESCRIPTION="" NAME="eml_ACCOUNTS_DONE" REUSABLE="NO" TYPE="Email" VERSIONNUMBER="1">
+                    <ATTRIBUTE NAME="Email User Name" VALUE="ops@example.invalid" />
+                    <ATTRIBUTE NAME="Email Subject" VALUE="Accounts updated" />
+                    <ATTRIBUTE NAME="Email Text" VALUE="The account changes were applied." />
+                </TASK>
+                <TASKINSTANCE DESCRIPTION="" ISENABLED="YES" NAME="eml_ACCOUNTS_DONE" REUSABLE="NO" TASKNAME="eml_ACCOUNTS_DONE" TASKTYPE="Email" TREAT_INPUTLINK_AS_AND="YES" />
+                <WORKFLOWLINK CONDITION="$s_m_UPDATE_ACCOUNTS.Status = SUCCEEDED" FROMTASK="s_m_UPDATE_ACCOUNTS" TOTASK="eml_ACCOUNTS_DONE" />
             </WORKFLOW>
         </FOLDER>
     </REPOSITORY>

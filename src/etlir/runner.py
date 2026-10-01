@@ -144,6 +144,10 @@ def run_package(
             elif t["command"] is None:
                 status[t["id"]] = rec["status"] = "blocked"
                 rec["reason"] = "no executable command"
+            elif t["command"].get("type") == "notify":
+                # A notification is recorded, never sent, by the reference runner.
+                status[t["id"]] = rec["status"] = "succeeded"
+                rec["note"] = "notification recorded, not sent (reference runner)"
             else:
                 rec.update(
                     _execute(

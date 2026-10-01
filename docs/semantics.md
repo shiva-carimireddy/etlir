@@ -114,7 +114,8 @@ A pipeline's tasks form a DAG. A dependency has a condition: `success`, `failure
 `completion` (either), or `expression` (opaque in 0.1). A task runs when **all** its
 dependency conditions hold (`trigger = all`); `trigger = any` is representable but no 0.1
 target supports it. A task whose conditions cannot hold does not run, and neither do its
-dependents that require it to succeed.
+dependents that require it to succeed. A `notify` task stands for a notification (for
+example an e-mail); the Canonical IR does not carry recipients or message text.
 
 ## Dataset bindings (runtime)
 

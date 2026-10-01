@@ -30,6 +30,8 @@ All notable changes are documented here. The format follows
   start value as a run parameter, consecutive blocks for two consumers). PowerCenter
   Sorter (pass-through, or DISTINCT).
 - `to_string` on fractional decimals; `YY` in timestamp formatting.
+- Notification tasks (PowerCenter Email) run in the reference runner as recorded, unsent
+  notifications (`task.notify`, constrained).
 - PowerCenter Aggregator without group-by ports (no row for empty input), unknown `$PM…`
   variables as run parameters, booleans into string ports, unused unconnected ports.
 - Invariants IR-V-018 (missing input) and IR-V-019 (keyed write keys); a dataflow violating

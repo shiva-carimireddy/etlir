@@ -46,6 +46,10 @@ only the unaffected tasks run (blocking already covers everything downstream of 
 task) and the result is `partial`. `execution.json` records per-task status, return code,
 duration, log file, launcher, and the engine's runtime settings.
 
+Notification tasks (`notify`, from PowerCenter Email tasks) are recorded in the run
+report as succeeded with a note; the runner never sends anything (the capability is
+`constrained` for that reason).
+
 It is a reference runner, not a scheduler: no calendars, event waits, retries, recovery,
 or parallel execution. A future orchestration emitter (e.g. Airflow) can consume the same
 canonical workflow graph.
